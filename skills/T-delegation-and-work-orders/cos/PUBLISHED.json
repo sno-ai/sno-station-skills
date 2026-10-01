@@ -1,0 +1,17 @@
+{
+  "unit": "cos",
+  "category": "T",
+  "tier": "candidate",
+  "split": {
+    "cos-evolve": "R"
+  },
+  "source": {
+    "repo": "sno-station-skills-core",
+    "commit": "e517c978e0c98fda2c681ac547cbcca3d7f433cd",
+    "unit_tree_clean": true
+  },
+  "selftests_run": 4,
+  "contract_sha256": "5022662b4807e817533b5edc1700fb40e87deccaf47d25f82d941baeacf18b62",
+  "payload_sha256": "dafc979f5b7703c8dd331afb060aff2b347e64ffe38031a665d6e4497deb4223",
+  "published_at": "2026-10-01T04:21:19Z"
+}

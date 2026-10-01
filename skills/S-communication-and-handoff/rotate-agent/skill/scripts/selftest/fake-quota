@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Stand-in for subscription-quota-check used only by this skill's self-test.
+# FAKE_FROM_VENDOR names the sender (default codex); the other vendor is the receiver.
+set -Eeuo pipefail
+vendor=""
+while [[ $# -gt 0 ]]; do [[ "$1" == --vendor ]] && vendor="$2"; shift; done
+if [[ "$vendor" == "${FAKE_FROM_VENDOR:-codex}" ]]; then
+  verdict="$FAKE_FROM_VERDICT"; used="$FAKE_FROM_USED"
+else
+  verdict="$FAKE_TO_VERDICT"; used=40
+fi
+printf '{"vendors":[{"verdict":"%s","tightest_window":{"used_pct":%s,"seconds_to_reset":123}}]}\n' "$verdict" "$used"
+[[ "$verdict" == wait ]] && exit 1
+exit 0

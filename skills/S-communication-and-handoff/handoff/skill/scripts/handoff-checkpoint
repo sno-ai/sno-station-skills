@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# Usage: handoff-checkpoint [--repo DIR] FILE | --verify FILE.
+# Keeps a progress record that a fresh agent can resume from when the working agent is gone.
+#   handoff-checkpoint FILE     create FILE, or refresh its machine record. The record holds what
+#                               git and the file system can state: checkout, branch, head, recent
+#                               commits, and every uncommitted path with its SHA-256. Text outside
+#                               the record markers (Done, Next, decisions...) is the agent's and is
+#                               never touched. The checkout is the git work tree of the current
+#                               directory, or of --repo.
+#   handoff-checkpoint --verify FILE
+#                               compare the record with the checkout it names. Exit 0 and MATCH when
+#                               nothing moved; exit 1 and one DRIFT line per difference otherwise.
+#                               MATCH covers the branch, HEAD and the working-tree content of every uncommitted
+#                               file; it does not compare what is staged.
+# Exit 2: unusable input (with one line saying why). Needs bash 4+ and GNU coreutils (Linux).
+# Keep FILE outside the checkout when you can; inside it, FILE itself is not counted as work.
+set -Eeuo pipefail
+
+if (( BASH_VERSINFO[0] < 4 )) || [[ "$(realpath --version 2>&1)" != *GNU* ]]; then
+    printf 'handoff-checkpoint needs bash 4+ and GNU coreutils (Linux); found bash %s\n' "$BASH_VERSION" >&2
+    exit 2
+fi
+
+readonly START='<!-- machine-record:start -->'
+readonly END='<!-- machine-record:end -->'
+
+usage() {
+    local status="${1:-2}"
+    printf 'usage: handoff-checkpoint [--repo DIR] FILE | --verify FILE\n' >&"$((status == 0 ? 1 : 2))"
+    exit "$status"
+}
+die() { printf 'handoff-checkpoint: %s\n' "$1" >&2; exit 2; }
+
+# git_state <top> <path-to-ignore>: sets BRANCH HEAD_SHA HEAD_LINE RECENT and UNCOMMITTED (path -> "XY hash").
+declare -A UNCOMMITTED=()
+BRANCH='' HEAD_SHA='' HEAD_LINE='' RECENT=''
+git_state() {
+    local top="$1" skip="$2" entry xy path hash
+    BRANCH="$(git -C "$top" symbolic-ref --short -q HEAD || printf '(detached)')"
+    if HEAD_LINE="$(git -C "$top" -c core.abbrev=12 log -1 --format='%h %s' 2>/dev/null)"; then
+        HEAD_SHA="${HEAD_LINE%% *}"
+        RECENT="$(git -C "$top" -c core.abbrev=12 log -5 --format='%h %s')"
+    else
+        HEAD_LINE='none'; HEAD_SHA='none'; RECENT=''
+    fi
+    UNCOMMITTED=()
+    while IFS= read -r -d '' entry; do
+        xy="${entry:0:2}"; path="${entry:3}"
+        [[ "$path" == "$skip" ]] && continue
+        if [[ -f "$top/$path" ]]; then hash="$(sha256sum <"$top/$path" | cut -d' ' -f1)"; else hash='-'; fi
+        UNCOMMITTED["$path"]="${xy// /} $hash"
+    done < <(git -C "$top" status --porcelain=v1 -z --untracked-files=all --no-renames)
+}
+
+# rel_to_top <top> <file>: the file's path relative to the checkout when it lives inside it, else nothing.
+rel_to_top() {
+    local abs
+    abs="$(realpath -m -- "$2")"
+    if [[ "$abs" == "$1"/* ]]; then printf '%s' "${abs#"$1"/}"; fi
+}
+
+has_markers() { grep -qxF "$START" -- "$1" && grep -qxF "$END" -- "$1"; }
+record_field() { sed -n "/^$START\$/,/^$END\$/{s/^$2: //p}" "$1" | head -n1; }
+
+write_record() {  # <top> <checkpoint-number>
+    local path rest
+    printf '%s\n' "$START"
+    printf 'checkpoint: %s\nupdated: %s\nby: %s\ncheckout: %s\nbranch: %s\nhead: %s\nrecent:\n' \
+        "$2" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${SNO_REACH_ADDR:-unknown}" "$1" "$BRANCH" "$HEAD_LINE"
+    if [[ -n "$RECENT" ]]; then printf -- '- %s\n' "${RECENT//$'\n'/$'\n- '}"; fi
+    printf 'uncommitted:\n'
+    for path in "${!UNCOMMITTED[@]}"; do
+        printf '%s\t%s\n' "$path" "${UNCOMMITTED[$path]}"
+    done | LC_ALL=C sort | while IFS=$'\t' read -r path rest; do
+        printf -- '- %s %s sha256:%s\n' "${rest%% *}" "$path" "${rest#* }"
+    done
+    printf '%s\n' "$END"
+}
+
+TMP='' BLOCK=''
+cmd_write() {  # <file> <repo>
+    local file="$1" repo="$2" top n=0
+    [[ -d "$(dirname -- "$file")" ]] || die "the folder for the record does not exist: $(dirname -- "$file")"
+    top="$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git work tree: $repo"
+    if [[ -e "$file" ]]; then
+        has_markers "$file" || die "not a progress record (no machine-record markers): $file"
+        n="$(record_field "$file" checkpoint)"; n="${n:-0}"
+    fi
+    n=$((n + 1))
+    git_state "$top" "$(rel_to_top "$top" "$file")"
+    TMP="$(mktemp "${file}.XXXXXX")"; BLOCK="$(mktemp "${file}.XXXXXX")"
+    trap 'rm -f -- "$TMP" "$BLOCK"' EXIT
+    write_record "$top" "$n" >"$BLOCK"
+    if [[ -e "$file" ]]; then
+        chmod --reference="$file" -- "$TMP"
+        awk -v blockfile="$BLOCK" -v start="$START" -v end="$END" '
+            $0 == start { while ((getline line < blockfile) > 0) print line; skipping = 1; next }
+            $0 == end { skipping = 0; next }
+            !skipping { print }
+        ' "$file" >"$TMP"
+    else
+        chmod 644 -- "$TMP"
+        {
+            # shellcheck disable=SC2016  # the backticks are literal text in the record
+            printf '# Progress record\n\nRun `handoff-checkpoint` after every finished task, then update Done and Next.\nThe block below is rewritten by the command; everything else is yours.\n\n'
+            cat -- "$BLOCK"
+            printf '\n## Objective and authorization\n\n## Done\n\n## Next\n\n## Decisions and assumptions\n\n## Risks and open questions\n'
+        } >"$TMP"
+    fi
+    mv -- "$TMP" "$file"
+    printf 'checkpoint %s written to %s\n' "$n" "$file"
+}
+
+cmd_verify() {  # <file>
+    local file="$1" top old_branch old_head line path hash count files='' head_lines=''
+    [[ -f "$file" ]] || die "no such progress record: $file"
+    has_markers "$file" || die "not a progress record (no machine-record markers): $file"
+    top="$(record_field "$file" checkout)"
+    old_branch="$(record_field "$file" branch)"
+    old_head="$(record_field "$file" head)"; old_head="${old_head%% *}"
+    [[ -n "$top" && -d "$top" ]] || die "the recorded checkout does not exist here: ${top:-none}"
+    git -C "$top" rev-parse --show-toplevel >/dev/null 2>&1 || die "the recorded checkout is not a git work tree: $top"
+
+    declare -A was=()
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^-\ ([^\ ]+)\ (.*)\ sha256:([0-9a-f]{64}|-)$ ]]; then
+            was["${BASH_REMATCH[2]}"]="${BASH_REMATCH[3]}"
+        fi
+    done < <(sed -n "/^$START\$/,/^$END\$/p" "$file" | sed -n '/^uncommitted:$/,$p' | sed '1d;$d')
+
+    git_state "$top" "$(rel_to_top "$top" "$file")"
+    printf 'checkpoint %s of %s, by %s\n' "$(record_field "$file" checkpoint)" "$(record_field "$file" updated)" "$(record_field "$file" by)"
+
+    if [[ "$HEAD_SHA" != "$old_head" ]]; then
+        if count="$(git -C "$top" rev-list --count "$old_head..$HEAD_SHA" 2>/dev/null)"; then
+            head_lines+="DRIFT head moved $old_head..$HEAD_SHA ($count commit$([[ "$count" == 1 ]] || printf s) since)"$'\n'
+        else
+            head_lines+="DRIFT head is now $HEAD_SHA and the recorded $old_head is not in its history"$'\n'
+        fi
+    fi
+    [[ "$BRANCH" == "$old_branch" ]] || head_lines+="DRIFT branch $old_branch -> $BRANCH"$'\n'
+    for path in "${!UNCOMMITTED[@]}"; do
+        hash="${UNCOMMITTED[$path]#* }"
+        if [[ -z "${was[$path]+x}" ]]; then files+="DRIFT new: $path"$'\n'
+        elif [[ "${was[$path]}" != "$hash" ]]; then files+="DRIFT changed: $path"$'\n'
+        fi
+    done
+    for path in "${!was[@]}"; do
+        [[ -n "${UNCOMMITTED[$path]+x}" ]] && continue
+        if [[ -e "$top/$path" ]]; then files+="DRIFT settled: $path (no longer uncommitted)"$'\n'; else files+="DRIFT gone: $path"$'\n'; fi
+    done
+    if [[ -z "$head_lines$files" ]]; then printf 'MATCH\n'; return 0; fi
+    printf '%s' "$head_lines"
+    [[ -z "$files" ]] || printf '%s' "$files" | LC_ALL=C sort
+    return 1
+}
+
+argc=$# mode=write repo='' file=''
+while (( $# )); do
+    case "$1" in
+        -h|--help) usage 0 ;;
+        --verify) mode=verify ;;
+        --repo) (( $# >= 2 )) || usage; repo="$2"; shift ;;
+        -*) usage ;;
+        *) [[ -z "$file" ]] || usage; file="$1" ;;
+    esac
+    shift
+done
+if [[ -z "$file" ]]; then
+    if (( argc == 0 )); then usage 0; fi
+    usage
+fi
+case "$mode" in
+    write) cmd_write "$file" "${repo:-.}" ;;
+    verify) cmd_verify "$file" ;;
+esac

@@ -1,0 +1,15 @@
+{
+  "unit": "charter",
+  "category": "T",
+  "tier": "candidate",
+  "split": {},
+  "source": {
+    "repo": "sno-station-skills-core",
+    "commit": "e517c978e0c98fda2c681ac547cbcca3d7f433cd",
+    "unit_tree_clean": true
+  },
+  "selftests_run": 1,
+  "contract_sha256": "5022662b4807e817533b5edc1700fb40e87deccaf47d25f82d941baeacf18b62",
+  "payload_sha256": "5e70fa29d13df20064a68ab7761dac659023a196979ddb92b26f35b2754cc13d",
+  "published_at": "2026-10-01T04:22:18Z"
+}

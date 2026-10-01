@@ -1,0 +1,35 @@
+# registry.yaml — public unit → category code → tier
+#
+# One line per public unit under skills/.
+# Category codes (fixed order): J M S H T R — see skills/README.md.
+# Tier:
+#   candidate — meant to ship; has not passed the gate from this repository yet
+#   shipped   — has passed the gate at least once and is in a published release
+#
+# A unit that deploys several skills (a family) keeps one row; members that belong to a
+# different category are listed under `split`.
+#
+# Machine-read: keep the `name: {cat: X, tier: Y}` shape, one unit per line, no nesting.
+
+units:
+  agentic-walkthrough:          {cat: J, tier: shipped}
+  e2e:                         {cat: J, tier: shipped, split: {e2e-environment-preflight: M}}
+  first-principles-review:      {cat: J, tier: shipped}
+  owner-intent-audit:           {cat: J, tier: shipped}
+  peer-review:                 {cat: J, tier: shipped}
+  less-is-more:                {cat: J, tier: shipped}
+  medic:                       {cat: M, tier: shipped}
+  handoff:                     {cat: S, tier: shipped}
+  heartbeat:                   {cat: S, tier: shipped}
+  join-talk:                   {cat: S, tier: shipped}
+  reach:                       {cat: S, tier: shipped}
+  rotate-agent:                {cat: S, tier: shipped}
+  subscription-quota-check:    {cat: S, tier: shipped}
+  rem-reflect:                 {cat: R, tier: shipped}
+  pl:                          {cat: T, tier: shipped, split: {pl-analyze: R}}
+  cos:                         {cat: T, tier: shipped, split: {cos-evolve: R}}
+  agentic-time-estimate:       {cat: H, tier: shipped}
+  away-brief:                  {cat: H, tier: shipped}
+  catch-report:                {cat: H, tier: shipped}
+  charter:                     {cat: T, tier: shipped}
+  deliver:                     {cat: T, tier: shipped}

@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# rotate-agent-watch — the heartbeat hook for quota-triggered failover between agent
+# harness vendors (codex <-> claude, either direction). One run is one tick: it reads the
+# working vendor's remaining subscription, applies the threshold, checks the receiver, and
+# records the trigger in a state file so it fires once. Every decision here is code; the
+# watching agent only relays the line this prints. Exit 0 on every verdict; 2 on bad usage.
+set -Eeuo pipefail
+
+usage() {
+  cat >&2 <<'USAGE'
+usage: rotate-agent-watch --from codex|claude --to codex|claude --state <file>
+                      [--threshold-pct <N>] [--quota-cmd <cmd>]
+prints one line: DONE | HOLD | LATE | ROTATE ...
+USAGE
+  exit 2
+}
+
+FROM="" TO="" STATE="" THRESHOLD=2 QUOTA_CMD="subscription-quota-check"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --from) FROM="${2:-}"; shift 2 ;;
+    --to) TO="${2:-}"; shift 2 ;;
+    --state) STATE="${2:-}"; shift 2 ;;
+    --threshold-pct) THRESHOLD="${2:-}"; shift 2 ;;
+    --quota-cmd) QUOTA_CMD="${2:-}"; shift 2 ;;
+    -h|--help) usage ;;
+    *) printf 'rotate-agent-watch: unknown option %s\n' "$1" >&2; usage ;;
+  esac
+done
+[[ "$FROM" =~ ^(codex|claude)$ && "$TO" =~ ^(codex|claude)$ && "$FROM" != "$TO" ]] || usage
+[[ -n "$STATE" && "$THRESHOLD" =~ ^[0-9]+$ ]] || usage
+command -v jq >/dev/null || { printf 'rotate-agent-watch: jq is required and missing\n' >&2; exit 2; }
+command -v "$QUOTA_CMD" >/dev/null || { printf 'rotate-agent-watch: quota command not found: %s\n' "$QUOTA_CMD" >&2; exit 2; }
+
+
+# The quota command exits non-zero for wait/unknown; the JSON verdict is the answer, not the status.
+read_quota() {
+  local vendor="$1" out
+  out="$("$QUOTA_CMD" --vendor "$vendor" --json --quiet 2>/dev/null || true)"
+  jq -r '(.vendors[0].verdict // "unknown"), (.vendors[0].tightest_window.used_pct // "null"),
+         (.vendors[0].tightest_window.seconds_to_reset // "null")' <<<"$out" 2>/dev/null \
+    || printf 'unknown\nnull\nnull\n'
+}
+
+{ read -r FROM_VERDICT; read -r USED; read -r RESET; } < <(read_quota "$FROM")
+
+# The lock: a state file that already says rotated ends every later tick the same way.
+if [[ -f "$STATE" ]] && grep -q '^rotated ' -- "$STATE"; then
+  printf 'DONE %s\n' "$(grep -m1 '^rotated ' -- "$STATE")"
+  exit 0
+fi
+case "$FROM_VERDICT" in
+  wait|owner_action) printf 'LATE blocked verdict=%s reset_in=%ss\n' "$FROM_VERDICT" "$RESET"; exit 0 ;;
+  go|short_only) ;;
+  *) printf 'HOLD unreadable verdict=%s\n' "$FROM_VERDICT"; exit 0 ;;
+esac
+[[ "$USED" =~ ^[0-9]+$ ]] || { printf 'HOLD unreadable verdict=%s used_pct=%s\n' "$FROM_VERDICT" "$USED"; exit 0; }
+REMAINING=$((100 - USED))
+if (( REMAINING > THRESHOLD )); then
+  printf 'HOLD from=%s remaining=%s%% threshold=%s%%\n' "$FROM" "$REMAINING" "$THRESHOLD"
+  exit 0
+fi
+
+{ read -r TO_VERDICT; read -r _; read -r _; } < <(read_quota "$TO")
+case "$TO_VERDICT" in
+  go|short_only) ;;
+  *) printf 'HOLD receiver-%s from=%s remaining=%s%%\n' "$TO_VERDICT" "$FROM" "$REMAINING"; exit 0 ;;
+esac
+
+mkdir -p -- "$(dirname -- "$STATE")"
+STAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf 'rotated %s from=%s to=%s remaining=%s%%\n' "$STAMP" "$FROM" "$TO" "$REMAINING" > "$STATE.tmp"
+mv -f -- "$STATE.tmp" "$STATE"
+printf 'ROTATE from=%s to=%s remaining=%s%% reset_in=%ss\n' "$FROM" "$TO" "$REMAINING" "$RESET"

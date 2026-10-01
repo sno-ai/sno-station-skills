@@ -1,0 +1,105 @@
+{
+  "program": "reach",
+  "min_version": "2.0",
+  "global_flags": [
+    "--help",
+    "--version"
+  ],
+  "verbs": {
+    "spawn": [
+      "--as",
+      "--window",
+      "--cwd"
+    ],
+    "register": [
+      "--as",
+      "--channel",
+      "--handle"
+    ],
+    "unregister": [
+      "--as"
+    ],
+    "seats": [
+      "--json"
+    ],
+    "call": [
+      "--timeout",
+      "--expect"
+    ],
+    "watch": [
+      "--timeout",
+      "--idle"
+    ],
+    "ring": [],
+    "send": [
+      "--as",
+      "--no-ring"
+    ],
+    "reply": [
+      "--as",
+      "--card",
+      "--state",
+      "--reason"
+    ],
+    "inbox": [
+      "--as",
+      "--cc"
+    ],
+    "wait": [
+      "--as",
+      "--reply-to",
+      "--from",
+      "--timeout",
+      "--every",
+      "--idle"
+    ],
+    "dismiss": [
+      "--as",
+      "--card",
+      "--reason"
+    ],
+    "log": [
+      "--as",
+      "--work"
+    ],
+    "state": [
+      "--work",
+      "--json"
+    ],
+    "flush": [
+      "--as"
+    ],
+    "init": [
+      "--as",
+      "--name"
+    ],
+    "rebind": [
+      "--as",
+      "--reason"
+    ],
+    "doctor": [
+      "--as"
+    ],
+    "export": [
+      "--work",
+      "--output"
+    ],
+    "lint": [],
+    "remind": [
+      "--as"
+    ]
+  },
+  "reply_states": [
+    "accepted",
+    "completed",
+    "failed",
+    "cancelled",
+    "refused"
+  ],
+  "call_exit_codes": [
+    0,
+    3,
+    4,
+    5
+  ]
+}

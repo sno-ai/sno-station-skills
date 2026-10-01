@@ -1,0 +1,6 @@
+{
+  "tool_arguments": 400,
+  "tool_results": 1600,
+  "skill_blocks": 3000,
+  "harness_user_tags": ["task-notification", "local-command-caveat", "local-command-stdout", "local-command-stderr", "command-name", "command-message", "command-args"]
+}

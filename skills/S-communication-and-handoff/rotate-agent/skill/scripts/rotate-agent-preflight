@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# rotate-agent-preflight — prove, before the heartbeat is armed, that a rotation from one
+# agent vendor to the other can actually happen in this checkout: the tools exist, the
+# receiver's command is installed, both quotas can be read, and a receiver seat of the
+# `--to` vendor can be spawned here, answers a call, and is torn down again. Every check
+# prints one line, `OK <check>` or `FAIL <check>: <what> -> <what to do>`; the first FAIL
+# stops the run. Exit 0 ready, 1 not ready, 2 bad usage.
+set -Eeuo pipefail
+
+usage() {
+  cat >&2 <<'USAGE'
+usage: rotate-agent-preflight --from codex|claude --to codex|claude --cwd <checkout>
+                              [--sender <seat-address>] [--quota-cmd <cmd>]
+prints one line per check: OK <check> | FAIL <check>: <what> -> <what to do>
+USAGE
+  exit 2
+}
+
+FROM="" TO="" CWD="" SENDER="" QUOTA_CMD="subscription-quota-check"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --from) FROM="${2:-}"; shift 2 ;;
+    --to) TO="${2:-}"; shift 2 ;;
+    --cwd) CWD="${2:-}"; shift 2 ;;
+    --sender) SENDER="${2:-}"; shift 2 ;;
+    --quota-cmd) QUOTA_CMD="${2:-}"; shift 2 ;;
+    -h|--help) usage ;;
+    *) printf 'rotate-agent-preflight: unknown option %s\n' "$1" >&2; usage ;;
+  esac
+done
+[[ "$FROM" =~ ^(codex|claude)$ && "$TO" =~ ^(codex|claude)$ && "$FROM" != "$TO" && -n "$CWD" ]] || usage
+
+SEAT="preflight.rotate-agent@$(hostname -s | tr '[:upper:]' '[:lower:]')"
+readonly SEAT
+readonly ROOT="${SNO_REACH_ROOT:-$HOME/.local/state/sno-reach}"
+readonly STARTUP_SECONDS=90
+
+ok() { printf 'OK %s\n' "$1"; }
+fail() { # check what what-to-do
+  printf 'FAIL %s: %s -> %s\n' "$1" "$2" "$3"
+  exit 1
+}
+
+# 1. Tools this skill and the handoff run on.
+for tool in "$QUOTA_CMD" jq tmux sno heartbeat; do
+  command -v "$tool" >/dev/null || fail tools "$tool is not on PATH" "install it (sno setup installs sno, heartbeat and subscription-quota-check)"
+done
+version="$(sno reach --version 2>/dev/null || true)"
+[[ "$version" =~ ^([0-9]+)\. && ${BASH_REMATCH[1]} -ge 2 ]] || fail tools "sno reach --version printed '${version:-nothing}', need 2.0 or newer" "update Reach with sno setup"
+ok tools
+
+# 2. The receiver vendor's command, and the checkout it will work in.
+command -v "$TO" >/dev/null || fail receiver-command "$TO is not on PATH" "install the $TO CLI on this machine"
+ok receiver-command
+[[ -d "$CWD" ]] && git -C "$CWD" rev-parse --show-toplevel >/dev/null 2>&1 || fail checkout "$CWD is not a git work tree" "pass the checkout the working agent uses"
+ok checkout
+
+# 3. The sender must be reachable, or the order at ROTATE has nowhere to go.
+if [[ -n "$SENDER" ]]; then
+  sno reach seats --json 2>/dev/null | jq -e --arg a "$SENDER" 'select(.address == $a)' >/dev/null ||
+    fail sender-seat "$SENDER is not in sno reach seats" "have the working agent run join-talk in $CWD, then rerun"
+  ok sender-seat
+fi
+
+# 4. Both quotas readable now; the receiver must have headroom or there is nobody to rotate to.
+read_verdict() {
+  local out
+  out="$("$QUOTA_CMD" --vendor "$1" --json --quiet 2>/dev/null || true)"
+  jq -r '.vendors[0].verdict // "unknown"' <<<"$out" 2>/dev/null || printf 'unknown\n'
+}
+verdict="$(read_verdict "$FROM")"
+[[ "$verdict" =~ ^(go|short_only|wait)$ ]] || fail quota-from "$FROM quota reads '$verdict'" "log in to $FROM on this machine so its quota can be read"
+ok quota-from
+verdict="$(read_verdict "$TO")"
+[[ "$verdict" =~ ^(go|short_only)$ ]] || fail quota-to "$TO quota reads '$verdict'" "log in to $TO, or wait for its quota to reset; a receiver with no quota cannot take the task"
+ok quota-to
+
+# 5. A live receiver of the --to vendor in this checkout: spawn on a tmux seat, wait for
+#    its startup turn, make it answer a nonce, tear it down. A first run of a vendor in a
+#    directory stops at its trust prompt; that is the user's key to press, not ours.
+pane=""
+cleanup() {
+  local rc=$?
+  trap - EXIT
+  [[ -z "$pane" ]] || tmux kill-session -t "$pane" 2>/dev/null || true
+  [[ ! -f "$ROOT/$SEAT/reachable.json" ]] || sno reach unregister --as "$SEAT" >/dev/null 2>&1 || true
+  exit "$rc"
+}
+trap cleanup EXIT
+[[ ! -f "$ROOT/$SEAT/reachable.json" ]] || fail receiver-seat "$SEAT is still registered from an earlier run" "run: sno reach unregister --as $SEAT"
+sno reach init --as "$SEAT" --name preflight >/dev/null 2>&1 || fail receiver-seat "sno reach init --as $SEAT refused" "run it by hand and read its message"
+spawned="$(sno reach spawn "$TO" --as "$SEAT" --cwd "$CWD" --window 2>&1)" ||
+  fail receiver-seat "sno reach spawn $TO --window refused: ${spawned##*$'\n'}" "fix what it names, then rerun"
+pane="$(jq -r '.identity.value' "$ROOT/$SEAT/reachable.json")"
+# The seat's startup turn is over when its terminal has been quiet for ten seconds.
+sno reach watch "$SEAT" --idle 10 --timeout "$STARTUP_SECONDS" >/dev/null 2>&1 ||
+  fail receiver-start "$TO kept printing for ${STARTUP_SECONDS}s after spawn" "open $TO in $CWD by hand and see what it is doing"
+if tmux capture-pane -p -t "$pane" | grep -qi 'trust'; then
+  fail receiver-trust "$TO stopped at its trust prompt in $CWD" "open $TO once in $CWD by hand, accept the prompt, exit, then rerun"
+fi
+nonce="PREFLIGHT_$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
+sno reach call "$SEAT" "Reply with exactly $nonce and nothing else." --expect "$nonce" --timeout 120 >/dev/null 2>&1 ||
+  fail receiver-answer "$TO did not answer a call within 120s" "open $TO in $CWD by hand and check it can take a prompt; screen tail: $(tmux capture-pane -p -t "$pane" 2>/dev/null | grep -v '^\s*$' | tail -3 | tr '\n' '|')"
+ok receiver-answer
+printf 'READY from=%s to=%s cwd=%s\n' "$FROM" "$TO" "$CWD"

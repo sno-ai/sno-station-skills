@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+# time-left — deterministic facts about work already in flight. No estimating here:
+# this script reports only what a process or a checklist actually says, so the
+# model's judgment starts from measured ground instead of a remembered figure.
+#
+#   time-left --find <pattern>  -> every candidate pid, with how long each has run:
+#                                    pid 3024701  2h07m elapsed  pytest -q tests/
+#                                  Own shell and its ancestors are excluded, because a
+#                                  loose pattern otherwise matches the shell asking.
+#   time-left --pid <pid>       -> one of two fact lines:
+#                                    deadline: <local/UTC pair>   (a timeout wrapper on
+#                                                                  this pid OR just above
+#                                                                  it: the hard instant)
+#                                    running: <H>h<M>m elapsed — no deadline exists
+#                                                                 (no timeout wrapper)
+#   time-left --tasks <file>    -> checklist progress, counted not judged:
+#                                    tasks: <done>/<total> done (<pct>%), <open> open
+#                                  0 open does NOT mean 0 time left: close-out work
+#                                  (final review, release, hand-over) is never a checkbox.
+#
+# Exit: 0 facts printed · 2 nothing determinable (dead pid, unreadable file,
+# no checkboxes). Exit 2 means "measure differently or fall back to judgment",
+# never "assume zero".
+set -Eeuo pipefail
+
+die() { printf 'time-left: %s\n' "$*" >&2; exit 2; }
+
+# --pid and --find read elapsed seconds from procps `ps -o etimes` (Linux). Elsewhere `ps` fails
+# and a live pid would be reported as already finished, so stop here with the real cause.
+need_procps() {
+  if ! command -v pgrep >/dev/null 2>&1 || ! ps -o etimes= -p "$$" >/dev/null 2>&1; then
+    die "requires Linux procps (ps with the etimes column, and pgrep); --tasks works without them"
+  fi
+}
+
+case "${1:-}" in
+  -h|--help)
+    sed -n '/^# time-left —/,/^# never "assume zero"\./p' "$0" | sed 's/^# \{0,1\}//'
+    exit 0
+    ;;
+  --pid)
+    [ $# -eq 2 ] || die "usage: --pid <pid>"
+    need_procps
+    case "$2" in ''|*[!0-9]*) die "--pid takes a pid, got '$2'";; esac
+    pid=$2
+    comm=$(ps -o comm= -p "$pid" 2>/dev/null | tr -d ' ') \
+      || die "pid $pid is not running — nothing is left to wait for, or the pid is wrong"
+    [ -n "$comm" ] || die "pid $pid is not running — nothing is left to wait for, or the pid is wrong"
+
+    # The deadline lives on the WRAPPER, but the pid a caller has in hand is the
+    # worker -- `timeout 1800 pytest` is two processes, and asking the worker gives
+    # "no deadline exists" for a job whose stop instant is fully known. Walk up
+    # and find the wrapper instead of making the caller know
+    # this. Bounded: a wrapper is the immediate parent or very near it, and an
+    # unbounded walk would eventually reach init and report ITS deadline.
+    wrapper=""; probe=$pid; hops=0
+    while [ "$hops" -lt 4 ] && [ "$probe" -gt 1 ]; do
+      # `|| true` on every ps capture that may legitimately come back empty: under
+      # `set -o pipefail` a dead pid makes the pipeline fail, and the assignment IS
+      # the failing command, so `set -e` kills the script BEFORE the empty-value
+      # guard on the next line can run, producing no error message.
+      pcomm=$(ps -o comm= -p "$probe" 2>/dev/null | tr -d ' ') || true
+      if [ "$pcomm" = "timeout" ]; then wrapper=$probe; break; fi
+      probe=$(ps -o ppid= -p "$probe" 2>/dev/null | tr -d ' ') || true
+      case "$probe" in ''|*[!0-9]*) break;; esac
+      hops=$(( hops + 1 ))
+    done
+
+    if [ -n "$wrapper" ]; then
+      # report-time reads the wall off the wrapper's argv and refuses to guess --
+      # that refusal propagates as our exit 2, which is correct: a half-read
+      # deadline is worse than none.
+      command -v report-time >/dev/null 2>&1 || die "report-time not found on PATH (Sno Station installs it with sno setup)"
+      deadline=$(report-time --pid "$wrapper") || exit 2
+      if [ "$wrapper" = "$pid" ]; then
+        printf 'deadline: %s\n' "$deadline"
+      else
+        printf 'deadline: %s (from wrapper pid %s)\n' "$deadline" "$wrapper"
+      fi
+    else
+      etimes=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ') || true
+      case "$etimes" in ''|*[!0-9]*) die "pid $pid: cannot read elapsed time";; esac
+      printf 'running: %dh%02dm elapsed — no deadline exists (no timeout wrapper)\n' \
+        $(( etimes / 3600 )) $(( (etimes % 3600) / 60 ))
+    fi
+    ;;
+  --find)
+    # Finding the pid is where the caller reaches for `pgrep -f <pattern>`, and a
+    # loose pattern matches the CHECKING shell: the pattern text sits in that
+    # shell's own command line, so it ranks first and reports 0h00m elapsed for a
+    # job that has run for hours. Own process and own ancestry are excluded here so
+    # the caller cannot step on it.
+    [ $# -eq 2 ] || die "usage: --find <pattern>"
+    need_procps
+    # Whitespace-only is the shape an agent's failed extraction actually takes, and
+    # it is NOT empty: it passes a -n test and then matches nearly every process.
+    # A whitespace-only search can return an unrelated login shell as the job.
+    case "${2:-}" in
+      *[![:space:]]*) : ;;
+      *) die "--find needs a pattern with real characters, got only whitespace — the extraction that produced it failed" ;;
+    esac
+    self_chain=" $$ "
+    probe=$PPID; hops=0
+    while [ "$hops" -lt 12 ] && [ "${probe:-0}" -gt 1 ]; do
+      self_chain="$self_chain$probe "
+      probe=$(ps -o ppid= -p "$probe" 2>/dev/null | tr -d ' ') || true
+      case "$probe" in ''|*[!0-9]*) break;; esac
+      hops=$(( hops + 1 ))
+    done
+    # pgrep's three statuses must not collapse into one. Captured explicitly: left
+    # inside the loop's heredoc a nonzero status aborts the script under `set -e`,
+    # exiting 1 with no message -- a status this contract does not define and a
+    # caller reads as "not zero, keep going". And a MALFORMED pattern (status 2)
+    # reported as "no process matches" tells the caller the job has finished when it
+    # was never searched for, which sends it to the guessing fallback with a
+    # measurable fact still unmeasured.
+    pgrep_rc=0
+    matches=$(pgrep -f -- "$2" 2>/dev/null) || pgrep_rc=$?
+    case "$pgrep_rc" in
+      0) : ;;
+      1) matches="" ;;
+      *) die "--find: '$2' is not a usable search pattern (pgrep status $pgrep_rc) — nothing was searched for, so this is not evidence the job finished" ;;
+    esac
+    found=0
+    while read -r cand; do
+      [ -n "$cand" ] || continue
+      case "$self_chain" in *" $cand "*) continue;; esac
+      etimes=$(ps -o etimes= -p "$cand" 2>/dev/null | tr -d ' ') || true
+      case "$etimes" in ''|*[!0-9]*) continue;; esac
+      args=$(ps -o args= -p "$cand" 2>/dev/null | cut -c1-90) || true
+      printf 'pid %s  %dh%02dm elapsed  %s\n' \
+        "$cand" $(( etimes / 3600 )) $(( (etimes % 3600) / 60 )) "$args"
+      found=$(( found + 1 ))
+    done <<EOF
+$matches
+EOF
+    [ "$found" -gt 0 ] \
+      || die "no process matches '$2' (excluding this shell) — it already finished, or the pattern is wrong"
+    ;;
+  --tasks)
+    [ $# -eq 2 ] || die "usage: --tasks <file>"
+    file=$2
+    [ -f "$file" ] && [ -r "$file" ] || die "cannot read tasks file: $file"
+    # `-`, `*`, `+` and `1.` are all legal list bullets. grep -c exits 1 on zero
+    # matches, which is a count here, not a failure.
+    MARK='^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]+'
+    done_n=$(grep -c -E "${MARK}\[[xX]\]" -- "$file") || true
+    open_n=$(grep -c -E "${MARK}\[[[:space:]]?\]" -- "$file") || true
+    total=$(( done_n + open_n ))
+    [ "$total" -gt 0 ] || die "no checkboxes found in $file — progress is not countable here"
+    # A checkbox row this counter did not count silently shrinks the denominator, and
+    # that error runs in ONE direction: a higher percent done -- the direction that
+    # makes an agent report unfinished work as finished. Refuse over a partial count.
+    # An OPTIONAL bullet then the box. Deliberately not "any word then a box":
+    # that shape matches ordinary prose containing "[x]" and would refuse a healthy
+    # file, and a guard that blocks the working path is worse than the hole it fills.
+    seen=$(grep -c -E '^[[:space:]]*([-*+]|[0-9]+[.)])?[[:space:]]*\[[ xX]\]' -- "$file") || true
+    [ "$seen" -le "$total" ] || die "$file has $seen checkbox-style rows but only $total are countable — an uncounted row would overstate progress; report the file, not a number"
+    printf 'tasks: %d/%d done (%d%%), %d open\n' \
+      "$done_n" "$total" $(( done_n * 100 / total )) "$open_n"
+    ;;
+  '')
+    die "usage: time-left --find <pattern> | --pid <pid> | --tasks <file> (--help for details)"
+    ;;
+  *)
+    die "unknown argument '$1' — usage: time-left --find <pattern> | --pid <pid> | --tasks <file>"
+    ;;
+esac

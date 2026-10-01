@@ -1,0 +1,7 @@
+#!/usr/bin/env node
+// Recording `sno-observe` for the observe journey: validates nothing, appends its exact argv line
+// to REM_OBSERVE_CAPTURE, and exits 2 for the event type named in REM_OBSERVE_FAIL (else 0).
+const fs = require('node:fs');
+const argv = process.argv.slice(2);
+if (process.env.REM_OBSERVE_CAPTURE) fs.appendFileSync(process.env.REM_OBSERVE_CAPTURE, `${argv.join(' ')}\n`);
+process.exit(argv[0] === 'append' && argv[1] === process.env.REM_OBSERVE_FAIL ? 2 : 0);

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+# rem-reflect launcher. The implementation is the TypeScript beside this script in the skill payload.
+# Run from the repo or the deployed skill payload, rem-reflect.ts sits next to this file; published to
+# ~/.local/bin, this file is alone, so fall back to the deployed skill roots where the payload lives.
+DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+for cand in \
+  "$DIR/rem-reflect.ts" \
+  "$HOME/.claude/skills/rem-reflect/scripts/rem-reflect.ts" \
+  "$HOME/.codex/skills/rem-reflect/scripts/rem-reflect.ts"; do
+  if [ -f "$cand" ]; then
+    exec node --experimental-strip-types "$cand" "$@"
+  fi
+done
+printf 'rem-reflect: cannot find rem-reflect.ts (looked beside this command and in the deployed skill roots)\n' >&2
+exit 2

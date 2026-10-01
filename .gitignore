@@ -1,0 +1,7 @@
+ai-doc/
+openspec/
+staging/
+TODO.md*
+__pycache__/
+*.pyc
+node_modules/

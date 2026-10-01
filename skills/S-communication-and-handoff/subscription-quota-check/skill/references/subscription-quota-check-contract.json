@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "program": "subscription-quota-check",
+  "min_version": "1.0",
+  "flags": [
+    "--vendor",
+    "--json",
+    "--human",
+    "--quiet",
+    "--help",
+    "-h"
+  ],
+  "verdict_exits": {
+    "go": 0,
+    "short_only": 0,
+    "wait": 1,
+    "owner_action": 1,
+    "unknown": 3,
+    "needs_auth": 4,
+    "n/a": 0
+  }
+}

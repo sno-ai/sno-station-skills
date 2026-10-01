@@ -1,0 +1,250 @@
+#!/usr/bin/env bash
+# away-brief — one page for when the owner comes back: what got done, what is stuck, what needs an answer,
+# what the quota did. It only reads (git, charters and their proofs, progress records, the Reach inbox,
+# heartbeats, the quota reader); the one thing it writes is its own list of quota readings (Reach may also note that it has seen the cards its inbox read listed), because a
+# reading shows usage now and only two readings show what was spent. A source it cannot read is named on
+# a `not read: <what> -> <why>` line and the rest still prints.
+# Exit 0 printed, 2 bad usage. Needs bash 4+, GNU date and find, git and jq; deliver-proof, handoff-checkpoint
+# records, sno, heartbeat and subscription-quota-check are used when present.
+set -Eeuo pipefail
+
+usage() {
+  local status="${1:-2}"
+  cat >&"$((status == 0 ? 1 : 2))" <<'USAGE'
+usage: away-brief run [--since 12h|2d|30m|<date>] [--repo DIR]... [--charters DIR]... [--as <seat>]
+       away-brief mark
+run   prints the page: ## Done, ## Stuck, ## Needs you, ## Spend (60 lines at most). Default cutoff 12h,
+      default repo the git work tree of the current folder. Charters and progress records are searched
+      in the repos and in every --charters folder. --as (or SNO_REACH_ADDR) is the seat whose Reach inbox
+      is read for questions and decisions.
+mark  stores a quota reading now, so the next page can say what was spent since; prints one line.
+USAGE
+  exit "$status"
+}
+
+readonly QUIET_HOURS=2 MAX_LINES=60 LIST_MAX=5
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/away-brief"
+READINGS="$STATE_DIR/readings.jsonl"
+
+(( $# > 0 )) || usage 0
+mode="$1"; shift
+case "$mode" in
+  -h|--help) usage 0 ;;
+  run|mark) ;;
+  *) printf 'away-brief: unknown command %s\n' "$mode" >&2; usage ;;
+esac
+
+SINCE=12h SEAT="${SNO_REACH_ADDR:-}"
+repos=() dirs=()
+while (( $# )); do
+  case "$1" in
+    --since) SINCE="${2:-}"; shift 2 ;;
+    --repo) repos+=("${2:-}"); shift 2 ;;
+    --charters) dirs+=("${2:-}"); shift 2 ;;
+    --as) SEAT="${2:-}"; shift 2 ;;
+    -h|--help) usage 0 ;;
+    *) printf 'away-brief: unknown option %s\n' "$1" >&2; usage ;;
+  esac
+done
+
+if [[ "$SINCE" =~ ^([0-9]+)([mhd])$ ]]; then
+  case "${BASH_REMATCH[2]}" in m) unit=minutes ;; h) unit=hours ;; d) unit=days ;; esac
+  cutoff_epoch="$(date -u -d "${BASH_REMATCH[1]} $unit ago" +%s)"
+else
+  cutoff_epoch="$(date -u -d "$SINCE" +%s 2>/dev/null)" || { printf 'away-brief: cannot read --since %s (use 12h, 2d, 30m or a date)\n' "$SINCE" >&2; exit 2; }
+fi
+cutoff_iso="$(date -u -d "@$cutoff_epoch" +%Y-%m-%dT%H:%M:%SZ)"
+now_epoch="$(date -u +%s)"
+have() { command -v "$1" >/dev/null 2>&1; }
+
+# ---- quota readings: current values, stored so a later page can show the change
+read_quota() { # prints one line per vendor: vendor|five_hour|weekly (empty = not reported; | because read collapses tabs); returns 1 when unreadable
+  have subscription-quota-check && have jq || return 1
+  local out
+  out="$(timeout 60 subscription-quota-check --json --quiet 2>/dev/null || true)"
+  jq -e '.vendors | type == "array"' >/dev/null 2>&1 <<<"$out" || return 1
+  jq -r '.vendors[] | [.vendor, (.five_hour.used_pct // "" | tostring), (.seven_day.used_pct // (.tightest_window.used_pct // "") | tostring)] | join("|")' <<<"$out"
+}
+store_readings() { # stdin: the read_quota lines; returns 1 when the store cannot be written
+  mkdir -p "$STATE_DIR" 2>/dev/null || return 1
+  local vendor five weekly
+  while IFS='|' read -r vendor five weekly; do
+    jq -cn --arg ts "$cutoff_now" --arg v "$vendor" --arg f "$five" --arg w "$weekly" \
+      '{ts: $ts, vendor: $v, five_hour: ($f | tonumber? // null), weekly: ($w | tonumber? // null)}' >>"$READINGS" 2>/dev/null || return 1
+  done
+}
+not_stored="not stored: quota readings -> cannot write $READINGS; the next page will have no earlier reading to compare with"
+cutoff_now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+if [[ "$mode" == mark ]]; then
+  if lines="$(read_quota)" && [[ -n "$lines" ]]; then
+    if store_readings <<<"$lines"; then
+      printf 'marked %s quota reading(s) at %s\n' "$(grep -c . <<<"$lines")" "$cutoff_now"
+    else
+      printf '%s\n' "$not_stored"; exit 1
+    fi
+  else
+    printf 'not read: quota (subscription-quota-check) -> no usable answer; nothing stored\n'
+  fi
+  exit 0
+fi
+
+done_=() stuck=() needs=() spend=()
+
+# ---- repos
+if (( ${#repos[@]} == 0 )); then
+  if top="$(git rev-parse --show-toplevel 2>/dev/null)"; then repos=("$top"); else
+    done_+=("not read: git -> the current folder is not a git work tree; pass --repo DIR")
+  fi
+fi
+scan_dirs=("${repos[@]}" "${dirs[@]}")
+for r in "${repos[@]}"; do
+  if [[ -d "$r" ]] && git -C "$r" rev-parse --show-toplevel >/dev/null 2>&1; then
+    mapfile -t subjects < <(git -C "$r" log --since="@$cutoff_epoch" --format=%s 2>/dev/null)
+    n=${#subjects[@]}
+    if (( n > 0 )); then
+      done_+=("$n commit$([[ $n == 1 ]] || printf s) in $(basename -- "$(git -C "$r" rev-parse --show-toplevel)"):")
+      for s in "${subjects[@]:0:6}"; do done_+=("  - $s"); done
+      (( n <= 6 )) || done_+=("  - and $((n - 6)) more")
+    fi
+  else
+    done_+=("not read: git repo $r -> not a git work tree")
+  fi
+done
+
+# ---- charters and progress records, found in the repos and --charters folders
+find_files() { # <name glob> <marker regex>
+  local d
+  for d in "${scan_dirs[@]}"; do
+    [[ -d "$d" ]] || continue
+    find "$d" -maxdepth 6 \( -name .git -o -name node_modules \) -prune -o -type f -name "$1" -print0 2>/dev/null
+  done | xargs -0 -r grep -l -m1 -E -- "$2" 2>/dev/null | xargs -r -d '\n' realpath -- | sort -u || true
+}
+front() { sed -n '1,/^---$/{/^---$/!p}' "$2" | sed -n "s/^$1: *//p" | head -n1; }
+
+if have deliver-proof; then
+  n_done=0 n_stuck=0
+  while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+    status="$(sed -n '2,/^---$/{s/^status: *//p}' "$f" | head -n1)"
+    title="$(sed -n '2,/^---$/{s/^title: *//p}' "$f" | head -n1)"
+    [[ "$status" == delivered || "$status" == released ]] || continue
+    (( ${#title} <= 70 )) || title="${title:0:70}..."
+    mtime="$(stat -c %Y "$f")"
+    if [[ "$status" == delivered ]] && (( mtime >= cutoff_epoch )); then
+      summary="$(deliver-proof check "$f" 2>/dev/null | tail -n1 || true)"
+      if [[ "$summary" =~ ^([0-9]+)/([0-9]+)\ checks\ proven && "${BASH_REMATCH[1]}" == "${BASH_REMATCH[2]}" ]]; then
+        (( ++n_done <= LIST_MAX )) && done_+=("charter delivered: $title (${BASH_REMATCH[1]}/${BASH_REMATCH[2]} checks proven) $f")
+      else
+        (( ++n_stuck <= LIST_MAX )) && stuck+=("charter marked delivered but its proofs do not check out: $title, ${summary:-no result from deliver-proof}; $f")
+      fi
+    elif [[ "$status" == released ]]; then
+      report="$(deliver-proof check "$f" 2>/dev/null || true)"
+      summary="$(tail -n1 <<<"$report")"
+      if [[ "$summary" =~ ^([0-9]+)/([0-9]+)\ checks\ proven ]] && [[ "${BASH_REMATCH[1]}" != "${BASH_REMATCH[2]}" ]]; then
+        bad="$(sed -n 's/^check \([0-9]*\): NOT proven.*/check \1/p' <<<"$report" | paste -sd, | sed 's/,/, /g')"
+        (( ++n_stuck <= LIST_MAX )) && stuck+=("charter not finished: $title, ${BASH_REMATCH[1]}/${BASH_REMATCH[2]} proven; not proven: $bad; $f")
+      elif [[ "$summary" =~ ^([0-9]+)/([0-9]+)\ checks\ proven ]]; then
+        (( ++n_stuck <= LIST_MAX )) && stuck+=("charter ready to close: $title, all ${BASH_REMATCH[2]} checks proven but its status is still released; $f")
+      else
+        (( ++n_stuck <= LIST_MAX )) && stuck+=("charter proofs could not be read: $title, ${summary:-no result from deliver-proof}; $f")
+      fi
+    fi
+  done < <(find_files '*.md' '^## Success checks$')
+  (( n_done <= LIST_MAX )) || done_+=("  and $((n_done - LIST_MAX)) more delivered charters")
+  (( n_stuck <= LIST_MAX )) || stuck+=("  and $((n_stuck - LIST_MAX)) more unfinished charters")
+else
+  stuck+=("not read: charters -> deliver-proof is not installed, so proofs cannot be counted")
+fi
+
+n_rec=0
+while IFS= read -r f; do
+  [[ -n "$f" ]] || continue
+  rec() { sed -n "/^<!-- machine-record:start -->\$/,/^<!-- machine-record:end -->\$/s/^$1: //p" "$f" | head -n1; }
+  updated="$(rec updated)"; by="$(rec by)"
+  [[ -n "$updated" ]] || continue
+  u_epoch="$(date -u -d "$updated" +%s 2>/dev/null)" || continue
+  tasks="$(awk '/^## Next$/ { on = 1; next } /^## / { on = 0 } on && NF && tolower($0) !~ /^(- )?(\(?none\)?|n\/a)\.?$/' "$f" | grep -c . || true)"
+  age_h=$(( (now_epoch - u_epoch) / 3600 ))
+  if (( tasks > 0 && age_h >= QUIET_HOURS )); then
+    (( ++n_rec <= LIST_MAX )) && stuck+=("progress record quiet for ${age_h}h: $f, ${by:-unknown}, $tasks task$([[ $tasks == 1 ]] || printf s) left")
+  elif (( u_epoch >= cutoff_epoch )); then
+    if (( tasks == 0 )); then done_+=("progress record finished, nothing left: $f (${by:-unknown})")
+    else done_+=("still going: $f (${by:-unknown}, $tasks task$([[ $tasks == 1 ]] || printf s) left)"); fi
+  fi
+done < <(find_files '*.state.md' '^<!-- machine-record:start -->$')
+
+# ---- Reach inbox: questions and decisions wait for an answer
+if [[ -z "$SEAT" ]]; then
+  needs+=("not read: Reach inbox -> no seat address; pass --as <seat> or set SNO_REACH_ADDR")
+elif ! have sno; then
+  needs+=("not read: Reach inbox ($SEAT) -> sno is not installed")
+else
+  if inbox="$(timeout 30 sno reach inbox --as "$SEAT" 2>&1)"; then
+    others=0
+    while IFS=$'\t' read -r path subject; do
+      [[ -n "$path" && -f "$path" ]] || continue
+      hdr="$(sed '/^$/q' "$path")"
+      type="$(sed -n 's/^X-Type: *//p' <<<"$hdr" | head -n1)"
+      from="$(sed -n 's/^From: *//p' <<<"$hdr" | head -n1 | sed 's/ *<.*//')"
+      if [[ "$type" == question || "$type" == decision ]]; then
+        needs+=("$type from ${from:-unknown}: ${subject#\[$type\] }")
+      else others=$((others + 1)); fi
+    done <<<"$inbox"
+    (( others == 0 )) || needs+=("$others other card$([[ $others == 1 ]] || printf s) in the inbox that ask for nothing")
+  else
+    needs+=("not read: Reach inbox ($SEAT) -> ${inbox%%$'\n'*}")
+  fi
+fi
+
+# ---- spend
+if have heartbeat; then
+  mine="$(timeout 10 heartbeat --list 2>/dev/null | awk '$1 == "you"' | grep -c . || true)"
+  total="$(timeout 10 heartbeat --list 2>/dev/null | grep -Ev '^(WHO|\()' | grep -c . || true)"
+  spend+=("background: $mine heartbeat$([[ $mine == 1 ]] || printf s) of yours running ($total on this machine)")
+fi
+if lines="$(read_quota)" && [[ -n "$lines" ]]; then
+  baseline() { # vendor -> "ts|five|weekly" of the newest reading at or before the cutoff, else the oldest after it
+    [[ -s "$READINGS" ]] || return 0
+    jq -cR 'fromjson? // empty' "$READINGS" | jq -s -r --arg v "$1" --arg c "$cutoff_iso" '
+      map(select(.vendor == $v)) as $r
+      | (($r | map(select(.ts <= $c)) | sort_by(.ts) | last) // ($r | map(select(.ts > $c)) | sort_by(.ts) | first))
+      | select(. != null) | [.ts, (.five_hour // "" | tostring), (.weekly // "" | tostring)] | join("|")'
+  }
+  while IFS='|' read -r vendor five weekly; do
+    text="$vendor:"
+    [[ -z "$five" ]] || text+=" 5-hour window ${five}% used,"
+    [[ -z "$weekly" ]] && text+=" usage not reported" || text+=" weekly ${weekly}% used"
+    base="$(baseline "$vendor")"
+    if [[ -n "$base" && -n "$weekly" ]]; then
+      IFS='|' read -r bts _ bweekly <<<"$base"
+      if [[ -n "$bweekly" ]]; then
+        delta="$(awk -v a="$weekly" -v b="$bweekly" 'BEGIN { printf "%g", a - b }')"
+        if [[ "$delta" == -* ]]; then text+=" (weekly window reset since $bts)"; else text+=" (weekly +$delta since $bts)"; fi
+      else text+=" (no earlier reading of the weekly window)"; fi
+    else
+      text+=" (no earlier reading; this run stored one)"
+    fi
+    spend+=("$text")
+  done <<<"$lines"
+  store_readings <<<"$lines" || spend+=("$not_stored")
+else
+  spend+=("not read: quota (subscription-quota-check) -> it is missing or gave no usable answer")
+fi
+
+# ---- the page
+# Each section gets its own line budget (18 + 14 + 12 + 7 lines, plus the title and the section headings = 60),
+# so a long Done list can never push out what waits for the owner or the quota.
+page=("# Away brief since $cutoff_iso")
+emit() { # title budget items...
+  local title="$1" budget="$2"; shift 2
+  page+=("" "## $title")
+  if (( $# == 0 )); then page+=("nothing")
+  elif (( $# <= budget )); then page+=("$@")
+  else page+=("${@:1:budget-1}" "  and $(( $# - budget + 1 )) more not shown"); fi
+}
+emit Done 18 ${done_[@]+"${done_[@]}"}
+emit Stuck 14 ${stuck[@]+"${stuck[@]}"}
+emit 'Needs you' 12 ${needs[@]+"${needs[@]}"}
+emit Spend 7 ${spend[@]+"${spend[@]}"}
+printf '%s\n' "${page[@]:0:MAX_LINES}"

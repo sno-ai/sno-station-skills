@@ -1,0 +1,52 @@
+case_id	pool	date	repo	workload_class	novelty	actual_h	bucket	group	task_summary	source
+case-01	codex	2026-04-01	project-07	source-code	mechanical	0.8	<1h		Source code: bounded change	source-001
+case-02	codex	2026-04-01	project-07	source-code	exploratory	2.8	1-4h		Source code: bounded change	source-002
+case-03	codex	2026-04-01	project-04	source-code	familiar	4.4	4-8h		Source code: bounded change	source-003
+case-04	codex	2026-04-01	project-02	source-code	exploratory	17.2	>8h		Source code: bounded change	source-004
+case-05	marathon	2026-04-01	project-03	infra-agent-config	familiar	14.52	>8h		Infrastructure: configuration or operations	source-005
+case-06	codex	2026-04-01	project-05	source-code	familiar	2.6	1-4h		Source code: bounded change	source-006
+case-07	codex	2026-04-01	project-05	infra-agent-config	familiar	5.8	4-8h		Infrastructure: configuration or operations	source-007
+case-08	codex	2026-04-01	project-07	source-code	mechanical	0.6	<1h		Source code: bounded change	source-008
+case-09	codex	2026-04-01	project-05	source-code	mechanical	1.7	1-4h		Source code: bounded change	source-009
+case-10	codex	2026-04-01	project-05	source-code	familiar	1.3	1-4h		Source code: bounded change	source-010
+case-11	codex	2026-04-01	project-04	source-code	familiar	1.9	1-4h		Source code: bounded change	source-011
+case-12	codex	2026-04-01	project-04	ui-web	exploratory	3.8	1-4h		Web interface: application change	source-012
+case-13	codex	2026-05-01	project-05	infra-agent-config	familiar	0.8	<1h		Infrastructure: configuration or operations	source-013
+case-14	codex	2026-05-01	project-05	source-code	familiar	2.0	1-4h		Source code: bounded change	source-014
+case-15	codex	2026-05-01	project-05	source-code	familiar	8.7	>8h		Source code: bounded change	source-015
+case-16	codex	2026-05-01	project-05	infra-agent-config	familiar	1.3	1-4h		Infrastructure: configuration or operations	source-016
+case-17	marathon	2026-05-01	project-03	infra-agent-config	exploratory	16.43	>8h		Infrastructure: configuration or operations	source-005
+case-18	marathon	2026-05-01	project-03	infra-agent-config	familiar	1.88	1-4h		Infrastructure: configuration or operations	source-005
+case-19	marathon	2026-05-01	project-03	infra-agent-config	exploratory	7.48	4-8h		Infrastructure: configuration or operations	source-005
+case-20	claude	2026-05-01	project-03	infra-agent-config	familiar	4.4	4-8h		Infrastructure: configuration or operations	source-017
+case-21	marathon	2026-05-01	project-06	ml-training	exploratory	30.39	>8h		Model training: evaluation and adjustment	source-018
+case-22	marathon	2026-05-01	project-01	infra-agent-config	exploratory	15.4	>8h		Infrastructure: configuration or operations	source-019
+case-23	marathon	2026-05-01	project-03	infra-agent-config	familiar	6.33	4-8h		Infrastructure: configuration or operations	source-005
+case-24	marathon	2026-06-01	project-06	source-code	exploratory	50.77	>8h		Source code: bounded change	source-018
+case-25	marathon	2026-06-01	project-01	infra-agent-config	familiar	7.92	4-8h		Infrastructure: configuration or operations	source-019
+case-26	marathon	2026-06-01	project-06	source-code	exploratory	30.29	>8h		Source code: bounded change	source-018
+case-27	marathon	2026-06-01	project-08	source-code	familiar	18.2	>8h		Source code: bounded change	source-020
+case-28	marathon	2026-06-01	project-06	ml-training	exploratory	60.24	>8h		Model training: evaluation and adjustment	source-018
+case-29	marathon	2026-06-01	project-08	source-code	familiar	12.41	>8h		Source code: bounded change	source-020
+case-30	claude	2026-06-01	project-08	source-code	exploratory	3.3	1-4h		Source code: bounded change	source-021
+case-31	marathon	2026-06-01	project-06	source-code	familiar	1.17	1-4h		Source code: bounded change	source-022
+case-32	marathon	2026-06-01	project-08	source-code	exploratory	5.32	4-8h		Source code: bounded change	source-023
+case-33	marathon	2026-06-01	project-06	ml-training	exploratory	20.02	>8h	g1	Model training: evaluation and adjustment	source-024
+case-34	marathon	2026-06-01	project-06	ml-training	exploratory	30.14	>8h		Model training: evaluation and adjustment	source-024
+case-35	claude	2026-06-01	project-08	source-code	mechanical	1.2	1-4h	g1	Source code: bounded change	source-025
+case-36	claude	2026-06-01	project-06	source-code	mechanical	1.7	1-4h		Source code: bounded change	source-026
+case-37	claude	2026-06-01	project-06	source-code	familiar	5.5	4-8h	g1	Source code: bounded change	source-027
+case-38	claude	2026-06-01	project-03	infra-agent-config	mechanical	3.8	1-4h		Infrastructure: configuration or operations	source-028
+case-39	claude	2026-06-01	project-08	infra-agent-config	familiar	4.9	4-8h		Infrastructure: configuration or operations	source-029
+case-40	marathon	2026-06-01	project-08	source-code	exploratory	40.2	>8h		Source code: bounded change	source-020
+case-41	marathon	2026-06-01	project-08	source-code	exploratory	17.36	>8h		Source code: bounded change	source-020
+case-42	claude	2026-06-01	project-03	infra-agent-config	exploratory	2.9	1-4h		Infrastructure: configuration or operations	source-030
+case-43	claude	2026-06-01	project-08	source-code	familiar	5.6	4-8h		Source code: bounded change	source-031
+case-44	claude	2026-07-01	project-08	source-code	exploratory	2.1	1-4h		Source code: bounded change	source-032
+case-45	claude	2026-07-01	project-04	infra-agent-config	mechanical	4.0	4-8h		Infrastructure: configuration or operations	source-033
+case-46	claude	2026-07-01	project-07	source-code	exploratory	2.0	1-4h		Source code: bounded change	source-034
+case-47	claude	2026-07-01	project-01	infra-agent-config	exploratory	1.5	1-4h		Infrastructure: configuration or operations	source-035
+case-48	claude	2026-07-01	project-08	source-code	exploratory	5.6	4-8h		Source code: bounded change	source-036
+case-49	marathon	2026-07-01	project-08	source-code	exploratory	23.08	>8h	g1	Source code: bounded change	source-037
+case-50	marathon	2026-07-01	project-06	ml-training	exploratory	8.35	>8h	g1	Model training: evaluation and adjustment	source-022
+case-51	marathon	2026-07-01	project-03	infra-agent-config	exploratory	4.27	4-8h	g1	Infrastructure: configuration or operations	source-038

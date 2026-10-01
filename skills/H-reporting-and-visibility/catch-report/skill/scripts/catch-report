@@ -1,0 +1,386 @@
+#!/usr/bin/env bash
+# catch-report — how many problems the two brains found, from records on this machine. It changes nothing
+# except temporary files.
+#   run   Mutual review: every review the peer-review skill recorded (the other model checks the work), from
+#         its invocation record (~/.local/state/codex-review-stats.jsonl) and findings ledger
+#         (~/.local/state/codex-reviews/findings.jsonl).
+#   brief The page an agent hands to the user: both brains together, with examples and how to read them.
+#   self  Self-check: an agent's own words admitting an error in its own conversation, judged by that
+#         agent's own model (claude judges claude conversations, codex judges codex conversations).
+# Exit 0 printed, 1 when run could read neither record, 2 bad usage. Needs bash 4+, GNU date/find/grep and jq;
+# self also needs the claude and/or codex command line.
+set -Eeuo pipefail
+
+usage() {
+  local status="${1:-2}"
+  cat >&"$((status == 0 ? 1 : 2))" <<'USAGE'
+usage: catch-report run  [--since 7d|12h|30m|<date>] [--stats FILE] [--findings FILE]
+       catch-report self  [--since 7d|12h|30m|<date>] [--limit N] [--agent claude|codex|both]
+                          [--claude-dir DIR] [--codex-dir DIR] [--stats FILE] [--list]
+       catch-report brief [--since 7d|12h|30m|<date>] [--limit N] [--agent claude|codex|both]
+                          [--claude-dir DIR] [--codex-dir DIR] [--stats FILE] [--findings FILE]
+run   reviews started, finished, refused and never finished; mutual-review findings per reviewer model; verdicts;
+      findings the owner has ruled on; the five reviews with the most fix-now.
+self  finds the moments where an agent admitted its own error in its own conversation, asks that agent's own
+      model whether the agent found it itself or was told, and prints the counts next to the mutual-review
+      numbers; --list also shows each moment with the verdict. It sends short excerpts of your conversations to your own claude or codex (at most N, default 30).
+brief runs both measurements and prints one page for the user: the headline (what the two brains caught
+      together), the second brain's numbers with the biggest catches quoted, the agents' own catches in their
+      own words, and how to read the numbers. Same cost as self. Default cutoff 7d.
+USAGE
+  exit "$status"
+}
+
+(( $# > 0 )) || usage 0
+mode="$1"; shift
+case "$mode" in
+  -h|--help) usage 0 ;;
+  run|self|brief) ;;
+  *) printf 'catch-report: unknown command %s\n' "$mode" >&2; usage ;;
+esac
+SINCE=7d LIMIT=30 AGENT=both LIST=0
+STATS="$HOME/.local/state/codex-review-stats.jsonl"
+FINDINGS="${FINDINGS_FILE:-$HOME/.local/state/codex-reviews/findings.jsonl}"
+CLAUDE_DIR="$HOME/.claude/projects" CODEX_DIR="$HOME/.codex/sessions"
+while (( $# )); do
+  case "$1" in
+    --since) SINCE="${2:-}"; shift 2 ;;
+    --stats) STATS="${2:-}"; shift 2 ;;
+    --findings) FINDINGS="${2:-}"; shift 2 ;;
+    --limit) LIMIT="${2:-}"; shift 2 ;;
+    --agent) AGENT="${2:-}"; shift 2 ;;
+    --list) LIST=1; shift ;;
+    --claude-dir) CLAUDE_DIR="${2:-}"; shift 2 ;;
+    --codex-dir) CODEX_DIR="${2:-}"; shift 2 ;;
+    -h|--help) usage 0 ;;
+    *) printf 'catch-report: unknown option %s\n' "$1" >&2; usage ;;
+  esac
+done
+[[ "$LIMIT" =~ ^[1-9][0-9]*$ ]] || { printf 'catch-report: --limit must be a positive number\n' >&2; usage; }
+[[ "$AGENT" =~ ^(claude|codex|both)$ ]] || { printf 'catch-report: --agent must be claude, codex or both\n' >&2; usage; }
+
+if [[ "$SINCE" =~ ^([0-9]+)([mhd])$ ]]; then
+  case "${BASH_REMATCH[2]}" in m) unit=minutes ;; h) unit=hours ;; d) unit=days ;; esac
+  cutoff="$(date -u -d "${BASH_REMATCH[1]} $unit ago" +%Y-%m-%dT%H:%M:%S)"
+else
+  cutoff="$(date -u -d "$SINCE" +%Y-%m-%dT%H:%M:%S 2>/dev/null)" || { printf 'catch-report: cannot read --since %s (use 7d, 12h, 30m or a date)\n' "$SINCE" >&2; exit 2; }
+fi
+cutoff_day="${cutoff%%T*}"
+
+# ---- mutual review: totals over every review that ended since the cutoff, "reviews fix_now high medium"
+mutual_totals() {
+  [[ -r "$STATS" ]] || return 1
+  jq -cR 'fromjson? // empty' -- "$STATS" | jq -s -r --arg s "$cutoff" '
+    def n: . // 0;
+    map(select(.ts >= $s and (.event == "end" or (.event == null and .verdict != null))))
+    | "\(length) \(map(.fix_now | n) | add // 0) \(map(.high | n) | add // 0) \(map(.medium | n) | add // 0)"'
+}
+
+if [[ "$mode" == run ]]; then
+  readable=0
+  printf 'Catch report since %s UTC\n' "$cutoff"
+  if totals="$(mutual_totals)"; then
+    read -r reviews fixnow high medium <<<"$totals"
+    printf 'Two brains (who found the problems):\n'
+    printf '  Mutual review (the other model checks the work; all peer-review records): reviews %s, fix-now %s, high %s, medium %s\n' "$reviews" "$fixnow" "$high" "$medium"
+    printf '  Self-check (an agent finds its own error in its own conversation): not measured by run; use: catch-report self --since %s\n' "$SINCE"
+    printf 'Mutual review found %s problems that had to be fixed now and %s high-severity findings.\n' "$fixnow" "$high"
+  fi
+  if [[ -r "$STATS" ]]; then
+    readable=1
+    # A torn line (a review killed mid-write) is skipped, not fatal.
+    jq -cR 'fromjson? // empty' -- "$STATS" | jq -s -r --arg s "$cutoff" '
+      def n: . // 0;
+      . as $all
+      | ($all | map(select(.event == "start" and .run != null)) | map({key: .run, value: .model}) | from_entries) as $model
+      | ($all | map(select(.run != null and (.event == "end" or .event == "refused")) | .run) | unique) as $closed
+      | ($all | map(select(.ts >= $s))) as $w
+      | ($w | map(select(.event == "start"))) as $starts
+      | ($w | map(select(.event == "end" or (.event == null and .verdict != null)))) as $ends
+      | ($w | map(select(.event == "refused"))) as $refused
+      | ($starts | map(select(.run as $r | $closed | index($r) | not))) as $lost
+      | "Reviews started: \($starts | length), finished: \($ends | length), refused: \($refused | length), never finished: \($lost | length)",
+        "By reviewer model:",
+        ( $ends | group_by($model[.run // ""] // "unknown (older records)") | sort_by(-length)
+          | .[] | "  \($model[.[0].run // ""] // "unknown (older records)"): runs \(length), high \(map(.high | n) | add), medium \(map(.medium | n) | add), fix-now \(map(.fix_now | n) | add), debt \(map(.debt | n) | add)" ),
+        "Verdicts: \( $ends | map(.verdict // "unknown") | group_by(.) | map({v: .[0], c: length}) | sort_by(-.c) | map("\(.v) \(.c)") | join(", ") )",
+        "Most fix-now:",
+        ( $ends | map(select((.fix_now | n) > 0)) | sort_by(-(.fix_now | n)) | .[:5][]
+          | "  \(.fix_now)  \(.ts[:10])  \((.targets // []) | join(", "))  \(.report // "-")" )
+    '
+  else
+    printf 'not read: %s -> run a review with the peer-review skill first, or pass --stats FILE\n' "$STATS"
+  fi
+  if [[ -r "$FINDINGS" ]]; then
+    readable=1
+    jq -cR 'fromjson? // empty' -- "$FINDINGS" | jq -s -r --arg d "$cutoff_day" '
+      map(select(.first_seen >= $d)) as $f
+      | ([$f[] | select(.status == "accepted")] | length) as $a
+      | ([$f[] | select(.status == "rejected")] | length) as $r
+      | ([$f[] | select(.status == "superseded")] | length) as $x
+      | ([$f[] | select(.status == "undecided" or .status == null)] | length) as $u
+      | "Findings first seen since \($d): \($f | length) (ruled on \($a + $r + $x): accepted \($a), rejected \($r), superseded \($x); undecided \($u))"
+    '
+  else
+    printf 'not read: %s -> run a review with the peer-review skill first, or pass --findings FILE\n' "$FINDINGS"
+  fi
+  printf 'These records do not say who wrote the code under review, how many bugs an agent found and fixed in its own work before any review (catch-report self measures that), or whether an undecided finding is real.\n'
+  (( readable == 1 ))
+  exit $?
+fi
+
+# ---- self-check and brief
+do_self() {
+# 1. Candidate moments, found without reading for meaning and without depending on the language the agent
+#    writes in: (a) the agent's own words within ten steps after a command or test output that failed, with no user message in between, and (b) its own
+#    words containing a known English admission. Thinking blocks and passing output are not candidates. The
+#    agent's own model then judges each moment. A conversation is first reduced to short rows:
+#    A = assistant text, U = user text, F = failing tool output, T = other tool output.
+ADMIT='(my mistake|i was wrong|i made a mistake|i introduced (a|the) (bug|regression)|that was a bug in my|the bug was in my|i broke |i missed |i got (that|this|it) wrong|turns out i |i overlooked|my (earlier|previous|first) (fix|change|edit|attempt|code|assumption) (was wrong|broke|missed|did not|didn.t))'
+FAILING='(^|\n)(not ok|FAIL|FAILED|Error|error:|Traceback|[A-Za-z]+Error:)|[Ee]xit code [1-9]|exited with code [1-9]'
+# Chinese admissions (wrote it backwards, wrote it wrong, got it wrong, my fault, I was wrong), as escapes
+# because shipped files hold no CJK characters.
+ADMIT_ZH="$(jq -rn '"\u5199\u53cd|\u5199\u9519|\u641e\u9519|\u5f04\u9519|\u6211\u7684\u9519|\u6211\u9519\u4e86"')"
+PER_SESSION=5
+ROWS_CLAUDE='
+  .timestamp as $ts | (if .type == "assistant" then (.message.content[]? | select(.type == "text") | {k: "A", t: .text})
+  elif .type == "user" then
+    (.message.content | if type == "string" then {k: "U", t: .}
+     else (.[]? | if .type == "text" then {k: "U", t: .text}
+           elif .type == "tool_result" then ((.content | tostring) as $c | if (.is_error == true) or ($c | test($failing; "i")) then {k: "F", t: $c[:300]} else {k: "T"} end)
+           else empty end) end)
+  else empty end) | . + {ts: $ts}'
+ROWS_CODEX='
+  .timestamp as $ts | (if .type == "response_item" then .payload as $p
+    | if $p.type == "message" and $p.role == "assistant" then ($p.content[]? | select(.type == "output_text") | {k: "A", t: .text})
+      elif $p.type == "message" and $p.role == "user" then ($p.content[]? | {k: "U", t: (.text // "")})
+      elif $p.type == "function_call_output" then (($p.output | tostring) as $c | if ($c | test($failing; "i")) then {k: "F", t: $c[:300]} else {k: "T"} end)
+      else empty end
+  else empty end) | . + {ts: $ts}'
+PICK='
+  . as $r
+  | def failed_just_before($i): [range([$i - 10, 0] | max; $i)] | reverse
+      | reduce .[] as $j ({stop: false, hit: false}; if .stop then . elif $r[$j].k == "U" then .stop = true elif $r[$j].k == "F" then .hit = true | .stop = true else . end) | .hit;
+    [range(0; length) | select($r[.].k == "A" and ($r[.].ts == null or $r[.].ts >= $cut) and (($r[.].t | test($admit + "|" + $admit_zh; "i")) or failed_just_before(.)))
+     | . as $i
+     | ([range($i - 1; ([$i - 40, -1] | max); -1) | select($r[.].k == "U")] | first) as $u
+     | {context: ((if $u != null and $u < $i - 3 then ["USER (earlier): " + $r[$u].t[:250]] else [] end
+                   + [range([$i - 3, 0] | max; $i) | $r[.] | select(.k != "T") | (if .k == "F" then "FAILING OUTPUT: " elif .k == "U" then "USER: " else "AGENT: " end) + .t[:250]]) | join("\n")),
+        said: $r[$i].t[:600]}]
+  | .[:$per][]'
+work="$(mktemp -d)"
+trap 'rm -rf -- "$work"' EXIT
+: >"$work/all.jsonl"
+sessions_claude=0 sessions_codex=0
+not_read_lines=()
+
+collect() { # <agent> <dir>
+  local agent="$1" dir="$2" f rows
+  [[ -d "$dir" ]] || { not_read_lines+=("not read: $agent conversations -> $dir does not exist (use --$agent-dir)"); return 0; }
+  if [[ "$agent" == claude ]]; then rows="$ROWS_CLAUDE"; else rows="$ROWS_CODEX"; fi
+  while IFS= read -r -d '' f; do
+    if [[ "$agent" == claude ]]; then sessions_claude=$((sessions_claude + 1)); else sessions_codex=$((sessions_codex + 1)); fi
+    jq -cR 'fromjson? // empty' -- "$f" 2>/dev/null | jq -c --arg failing "$FAILING" "$rows" 2>/dev/null | jq -s -c --arg admit "$ADMIT" --arg admit_zh "$ADMIT_ZH" --arg cut "$cutoff" --argjson per "$PER_SESSION" "$PICK" 2>/dev/null |
+      jq -c --arg agent "$agent" --arg file "$f" '. + {agent: $agent, file: $file}' >>"$work/all.jsonl" || true
+  done < <(find "$dir" -type f -name '*.jsonl' -newermt "$cutoff" -size -60M -print0 2>/dev/null | sort -z)
+}
+[[ "$AGENT" == codex ]] || collect claude "$CLAUDE_DIR"
+[[ "$AGENT" == claude ]] || collect codex "$CODEX_DIR"
+total_cands="$(grep -c . "$work/all.jsonl" || true)"
+# Too many to judge: take LIMIT candidates spaced evenly over the whole list, so every conversation and both
+# agents are represented and the sample is repeatable.
+awk -v l="$LIMIT" -v n="$total_cands" 'BEGIN { if (n > l) for (k = 0; k < l; k++) pick[int(k * n / l) + 1] = 1 } n <= l || (NR in pick)' "$work/all.jsonl" >"$work/cands.jsonl"
+
+# 2. Judgment: the agent's own model reads each moment (bounded by --limit, four at a time).
+judge() { # <index> : writes $work/verdict.<index>
+  local i="$1" rec agent prompt out v
+  rec="$(sed -n "${i}p" "$work/cands.jsonl")"
+  agent="$(jq -r .agent <<<"$rec")"
+  prompt="You are reading one moment from an AI coding agent's own conversation. Decide who found the agent's error.
+
+WHAT CAME JUST BEFORE:
+$(jq -r .context <<<"$rec")
+
+THE AGENT THEN SAID:
+$(jq -r .said <<<"$rec")
+
+Answer with exactly one word.
+SELF: the agent says or clearly shows that something it did earlier was wrong, it noticed this itself (by reading, testing or running something) with no user, reviewer or other agent pointing at it first, and is now fixing or redoing it.
+PROMPTED: a user, a reviewer or another agent pointed the error out first.
+NONE: anything else: routine progress (starting the next step, checking that something is in place, adding a planned check), a problem with the environment, an expected failure, or plain exploration."
+  if ! command -v "$agent" >/dev/null 2>&1; then printf 'MISSING\n' >"$work/verdict.$i"; return 0; fi
+  if [[ "$agent" == claude ]]; then
+    # --tools takes every following word as a tool name, so the prompt goes in on standard input.
+    out="$(printf '%s' "$prompt" | timeout 180 claude -p --no-session-persistence --tools "" 2>/dev/null || true)"
+  else
+    timeout 240 codex exec --ephemeral --skip-git-repo-check -s read-only -o "$work/last.$i" "$prompt" >/dev/null 2>&1 || true
+    out="$(cat "$work/last.$i" 2>/dev/null || true)"
+  fi
+  v="$(grep -oE 'SELF|PROMPTED|NONE' <<<"$out" | head -n1 || true)"
+  printf '%s\n' "${v:-FAILED}" >"$work/verdict.$i"
+}
+judged_n="$(grep -c . "$work/cands.jsonl" || true)"
+running=0
+for ((i = 1; i <= judged_n; i++)); do
+  judge "$i" &
+  running=$((running + 1))
+  if (( running >= 4 )); then wait -n || true; running=$((running - 1)); fi
+done
+wait || true
+
+self_n=0 prompted_n=0 none_n=0 failed_n=0
+  declare -gA missing_agents=()
+  for ((i = 1; i <= judged_n; i++)); do
+    case "$(cat "$work/verdict.$i" 2>/dev/null)" in
+      SELF) self_n=$((self_n + 1)) ;;
+      PROMPTED) prompted_n=$((prompted_n + 1)) ;;
+      NONE) none_n=$((none_n + 1)) ;;
+      MISSING) failed_n=$((failed_n + 1)); missing_agents[$(sed -n "${i}p" "$work/cands.jsonl" | jq -r .agent)]=1 ;;
+      *) failed_n=$((failed_n + 1)) ;;
+    esac
+  done
+  judged_ok=$((self_n + prompted_n + none_n))
+  sampled=0; (( total_cands > judged_n )) && sampled=1
+  estimate=$self_n est_lo=$self_n est_hi=$self_n
+  if (( judged_ok > 0 && sampled )); then
+    read -r estimate est_lo est_hi < <(awk -v k="$self_n" -v n="$judged_ok" -v N="$total_cands" 'BEGIN {
+      p = k / n; se = sqrt(p * (1 - p) / n); if (N > 1) se = se * sqrt((N - n) / (N - 1)); lo = (p - 1.96 * se) * N; hi = (p + 1.96 * se) * N
+      if (lo < 0) lo = 0; if (hi > N) hi = N
+      printf "%d %d %d\n", p * N + 0.5, lo + 0.5, hi + 0.5 }')
+  fi
+  # Quotes for the page: the shortest clear sentences first, one per conversation, cut at 160 characters.
+  examples=(); declare -A seen_file=()
+  : >"$work/quotes.tsv"
+  for ((i = 1; i <= judged_n; i++)); do
+    [[ "$(cat "$work/verdict.$i" 2>/dev/null)" == SELF ]] || continue
+    sed -n "${i}p" "$work/cands.jsonl" | jq -r '[.file, (.said | gsub("\\s+"; " ") | if length > 160 then .[:160] + "..." else . end)] | @tsv' >>"$work/quotes.tsv"
+  done
+  while IFS=$'\t' read -r qf qt; do
+    [[ ${#qt} -ge 25 && -z "${seen_file[$qf]:-}" ]] || continue
+    seen_file[$qf]=1; examples+=("$qt")
+    (( ${#examples[@]} < 3 )) || break
+  done < <(awk -F'\t' '{ print length($2) "\t" $0 }' "$work/quotes.tsv" | sort -n | cut -f2-)
+}
+
+if [[ "$mode" == self ]]; then
+  do_self
+  for l in ${not_read_lines[@]+"${not_read_lines[@]}"}; do printf '%s\n' "$l"; done
+  printf 'Self-check since %s UTC\n' "$cutoff"
+  printf 'Looked at: %s sessions (claude %s, codex %s)\n' "$((sessions_claude + sessions_codex))" "$sessions_claude" "$sessions_codex"
+  for a in "${!missing_agents[@]}"; do printf 'not judged: %s -> the %s command is not installed, so its moments cannot be judged\n' "$a" "$a"; done
+  printf 'Candidate moments (an agent reacting to a failure or admitting an error): %s; judged: %s%s\n' "$total_cands" "$judged_n" "$( (( total_cands > LIMIT )) && printf ' (limit %s)' "$LIMIT" || true)"
+  printf '  found by the agent itself: %s\n' "$self_n"
+  printf '  pointed out by the user or a reviewer: %s\n' "$prompted_n"
+  printf '  not an error, or could not be judged: %s\n' "$((none_n + failed_n))"
+  if (( LIST )); then
+    for ((i = 1; i <= judged_n; i++)); do
+      rec="$(sed -n "${i}p" "$work/cands.jsonl")"
+      printf '  %s  %s  %s: %s\n' "$(cat "$work/verdict.$i" 2>/dev/null)" "$(jq -r .agent <<<"$rec")" "$(basename -- "$(jq -r .file <<<"$rec")")" "$(jq -r '.said | gsub("\n"; " ") | .[:140]' <<<"$rec")"
+    done
+  fi
+  (( judged_ok > 0 )) || printf 'No moment could be judged, so nothing is counted.\n'
+  (( sampled == 0 || judged_ok == 0 )) || printf 'Estimate for all %s candidate moments: about %s found by the agent itself (from a sample of %s judged)\n' "$total_cands" "$estimate" "$judged_ok"
+  if totals="$(mutual_totals)"; then
+    read -r _ fixnow _ _ <<<"$totals"
+    if (( judged_ok == 0 )); then
+      printf 'Side by side: mutual review found %s problems that had to be fixed now; the self-check number is not available.\n' "$fixnow"
+    elif (( sampled )); then
+      printf 'Side by side: mutual review found %s problems that had to be fixed now; agents caught their own mistake in about %s moments (estimated from a sample of %s of %s candidate moments).\n' "$fixnow" "$estimate" "$judged_ok" "$total_cands"
+    else
+      printf 'Side by side: mutual review found %s problems that had to be fixed now; agents caught their own mistake in at least %s moments (judged %s of %s candidate moments).\n' "$fixnow" "$self_n" "$judged_n" "$total_cands"
+    fi
+  else
+    printf 'not read: %s -> mutual-review numbers are missing; pass --stats FILE\n' "$STATS"
+  fi
+  printf 'The self-check number only counts errors the agent said out loud within ten steps of a failure or in a known admission, and the model judges each one; quiet fixes are not seen.\n'
+  exit 0
+fi
+
+# ---- brief: the page the agent hands to the user
+cutoff_epoch="$(date -u -d "$cutoff" +%s)"; now_epoch="$(date -u +%s)"
+prev_cutoff="$(date -u -d "@$((2 * cutoff_epoch - now_epoch))" +%Y-%m-%dT%H:%M:%S)"
+if [[ "$SINCE" =~ ^([0-9]+)d$ ]]; then
+  n="${BASH_REMATCH[1]}"; period="last $n days"; before="the $n days before"; (( n != 1 )) || { period="last day"; before="the day before"; }
+elif [[ "$SINCE" =~ ^([0-9]+)h$ ]]; then period="last ${BASH_REMATCH[1]} hours"; before="the ${BASH_REMATCH[1]} hours before"
+elif [[ "$SINCE" =~ ^([0-9]+)m$ ]]; then period="last ${BASH_REMATCH[1]} minutes"; before="the ${BASH_REMATCH[1]} minutes before"
+else period="since $cutoff_day"; before="the period of the same length before"; fi
+
+MF=""
+if [[ -r "$STATS" ]]; then
+  MF="$(jq -cR 'fromjson? // empty' -- "$STATS" | jq -s -c --arg s "$cutoff" --arg p "$prev_cutoff" '
+    def n: . // 0;
+    def ends($a; $b): map(select(.ts >= $a and .ts < $b and (.event == "end" or (.event == null and .verdict != null))));
+    ends($s; "9999") as $c | ends($p; $s) as $q
+    | {reviews: ($c | length), fixnow: ($c | map(.fix_now | n) | add // 0), high: ($c | map(.high | n) | add // 0),
+       with_fix: ($c | map(select((.fix_now | n) > 0)) | length), approved: ($c | map(select(.verdict == "approve")) | length),
+       raised: ($c | map(select(.verdict == "needs-attention")) | length),
+       prev_counted: ($q | map(select(.fix_now != null)) | length), prev_fixnow: ($q | map(.fix_now | n) | add // 0),
+       top: ($c | map(select((.fix_now | n) > 0)) | sort_by(-(.fix_now | n)) | .[:3] | map({day: .ts[:10], targets: (.targets // []), fix_now: .fix_now, report: (.report // "")}))}')"
+fi
+do_self
+M=0; [[ -z "$MF" ]] || M="$(jq -r .fixnow <<<"$MF")"
+judged_ok=$((self_n + prompted_n + none_n))
+S=$self_n; (( sampled == 0 )) || S=$estimate
+printf '# Two brains, %s\n\n' "$period"
+if [[ -z "$MF" ]]; then
+  printf 'The review records could not be read (%s), so the second brain has no numbers here.\n' "$STATS"
+elif (( judged_ok > 0 && sampled )); then
+  printf '**The two brains together: a second model reviewing the work caught %s problems that had to be fixed, and the agents caught their own mistakes in an estimated %s moments (plausibly %s to %s).**\n' "$M" "$estimate" "$est_lo" "$est_hi"
+elif (( judged_ok > 0 )); then
+  printf '**The two brains together: a second model reviewing the work caught %s problems that had to be fixed, and the agents caught their own mistakes in %s moments.**\n' "$M" "$S"
+else
+  printf '**A second model reviewing the work caught %s problems that had to be fixed now.**\n' "$M"
+fi
+if [[ -n "$MF" ]]; then
+  reviews="$(jq -r .reviews <<<"$MF")"; with_fix="$(jq -r .with_fix <<<"$MF")"; approved="$(jq -r .approved <<<"$MF")"
+  high="$(jq -r .high <<<"$MF")"; prev_counted="$(jq -r .prev_counted <<<"$MF")"; raised="$(jq -r .raised <<<"$MF")"; prev_fix="$(jq -r .prev_fixnow <<<"$MF")"
+  printf '\n## The second brain: a different model checks the work\n'
+  pct=0; (( reviews == 0 )) || pct=$(( (with_fix * 100 + reviews / 2) / reviews ))
+  printf -- '- %s reviews by a different model: %s raised findings, %s (%s%%) found something that had to be fixed now, %s approved clean\n' "$reviews" "$raised" "$with_fix" "$pct" "$approved"
+  trend=""
+  if (( prev_counted > 0 )); then
+    if (( M > prev_fix )); then trend=" (up from $prev_fix in $before)"; elif (( M < prev_fix )); then trend=" (down from $prev_fix in $before)"; else trend=" (same as in $before)"; fi
+  fi
+  printf -- '- %s must-fix problems and %s high-severity findings in all%s\n' "$M" "$high" "$trend"
+  if (( $(jq '.top | length' <<<"$MF") > 0 )); then
+    printf -- '- Biggest catches:\n'
+    for ((k = 0; k < $(jq '.top | length' <<<"$MF"); k++)); do
+      day="$(jq -r ".top[$k].day" <<<"$MF")"; cnt="$(jq -r ".top[$k].fix_now" <<<"$MF")"; rpt="$(jq -r ".top[$k].report" <<<"$MF")"
+      first="$(basename -- "$(jq -r ".top[$k].targets[0] // \"a file\"" <<<"$MF")")"; more=$(( $(jq ".top[$k].targets | length" <<<"$MF") - 1 ))
+      extra=""; (( more <= 0 )) || extra=" (and $more more file$([[ $more == 1 ]] || printf s))"
+      printf '  %s. %s, %s%s: %s must-fix\n' "$((k + 1))" "$day" "$first" "$extra" "$cnt"
+      titles=""
+      if [[ -n "$rpt" && -r "$FINDINGS" ]]; then
+        titles="$(jq -cR 'fromjson? // empty' -- "$FINDINGS" | jq -s -r --arg r "$rpt" '[.[] | select(.report == $r and (.severity == "critical" or .severity == "high"))] | sort_by(if .severity == "critical" then 0 else 1 end) | .[:2][] | "     - \"\(.title)\""')"
+      fi
+      # No ledger rows for this review: read the headings of its report ("#### [C1] Title").
+      if [[ -z "$titles" && -n "$rpt" && -r "$rpt" ]]; then
+        titles="$(grep -E '^#### ' -- "$rpt" | head -n 2 | sed -E 's/^#### (\[[A-Za-z0-9]+\] *)?/     - "/; s/$/"/' || true)"
+      fi
+      [[ -z "$titles" ]] || printf '%s\n' "$titles"
+    done
+  fi
+fi
+printf '\n## The first brain catching itself\n'
+if (( judged_ok == 0 )); then
+  printf 'The self-check could not be measured: no moment could be judged (claude or codex was missing or failed, or no conversation had a moment to read).\n'
+else
+  who_else="were someone else pointing it out"; (( prompted_n != 1 )) || who_else="was someone else pointing it out"
+  rest=""; (( none_n == 0 )) || rest=", the rest were not errors"; (( failed_n == 0 )) || rest+=", $failed_n could not be judged"
+  read_part="read all $total_cands"; (( sampled == 0 )) || read_part="read $judged_ok of them (an evenly spread sample)"
+  printf -- '- In %s moments an agent hit a failing command or admitted a mistake, its own model %s: %s were the agent finding its own error, %s %s%s\n' "$total_cands" "$read_part" "$self_n" "$prompted_n" "$who_else" "$rest"
+  (( sampled == 0 )) || printf -- '- Estimate for all %s moments: about %s (plausible range %s to %s)\n' "$total_cands" "$estimate" "$est_lo" "$est_hi"
+  if (( ${#examples[@]} > 0 )); then
+    printf -- "- In the agents' own words:\n"
+    for e in "${examples[@]}"; do printf '  - "%s"\n' "$e"; done
+  fi
+fi
+unrul=0 fnew=0
+if [[ -r "$FINDINGS" ]]; then
+  read -r fnew unrul < <(jq -cR 'fromjson? // empty' -- "$FINDINGS" | jq -s -r --arg d "$cutoff_day" 'map(select(.first_seen >= $d)) | "\(length) \(map(select(.status == "undecided" or .status == null)) | length)"')
+fi
+printf '\n## How to read this\n'
+printf -- "- Must-fix means the reviewing model's own label for a problem caused by the change that had to be fixed; it is not a count of bugs that reached users.\n"
+printf -- '- The self-check counts moments, not distinct bugs: one mistake can show up in several things an agent said. It counts what an agent said out loud after a failure or in a known admission, as judged by its own model; quiet fixes are not seen and the model can be wrong. Check any number with: catch-report self --since %s --list\n' "$SINCE"
+printf -- '- The records do not say who wrote the code; %s of %s new findings are still undecided, so nobody has ruled them real or false.\n' "$unrul" "$fnew"
+printf 'Read from %s conversations and %s reviews on this machine.\n' "$((sessions_claude + sessions_codex))" "${reviews:-0}"

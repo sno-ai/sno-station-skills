@@ -1,0 +1,84 @@
+#!/usr/bin/env node
+// Recording cloud boundary for the installed two-day fixture; the local product still
+// serializes the request, invokes this CLI, validates its reply and writes the answer.
+const fs = require('node:fs');
+const path = require('node:path');
+
+if (process.env.EXEC_LOG) fs.appendFileSync(process.env.EXEC_LOG, 'sno\n');
+const argv = process.argv.slice(2);
+// `sno observe append`: validates nothing; records the exact argv line for the observe journey.
+if (argv[0] === 'observe' && argv[1] === 'append') {
+  if (process.env.REM_OBSERVE_CAPTURE) fs.appendFileSync(process.env.REM_OBSERVE_CAPTURE, `${argv.join(' ')}\n`);
+  process.exit(0);
+}
+// `sno rem verdict <judgment-id> <verdict>`: the acknowledgment flushCloudVerdicts checks.
+if (argv[0] === 'rem' && argv[1] === 'verdict' && argv.length === 4) {
+  process.stdout.write(`${JSON.stringify({ schema_version: 1, judgment_id: argv[2], verdict: argv[3], acknowledged: true })}\n`);
+  process.exit(0);
+}
+const command = argv.join(' ');
+if (command === 'station telemetry consent get') {
+  process.stdout.write('full\n');
+  process.exit(0);
+}
+if (command !== 'rem judge') {
+  process.stderr.write(`unexpected sno command: ${command}\n`);
+  process.exit(2);
+}
+
+const batch = JSON.parse(fs.readFileSync(0, 'utf8'));
+if (process.env.REM_SNO_CAPTURE) {
+  fs.mkdirSync(path.dirname(process.env.REM_SNO_CAPTURE), { recursive: true });
+  fs.appendFileSync(process.env.REM_SNO_CAPTURE, `${JSON.stringify(batch)}\n`);
+}
+const target = batch.catalogue.find(entry => entry.name === 'heartbeat' && entry.path.includes('/.claude/'))
+  ?? batch.catalogue.find(entry => entry.name === 'heartbeat');
+if (!target || !target.skill_md.includes('name: heartbeat')) throw new Error('complete installed heartbeat body was not uploaded');
+
+// REM_CLOUD_LESSONS: a JSON array of [lesson_id, applies_to]; the first half issues one lesson each.
+const fixtureLessons = pageId => JSON.parse(process.env.REM_CLOUD_LESSONS || '[]').map(([id, appliesTo]) => {
+  const situation = { task_type: 'debug', trigger: `trigger ${id}`, tools: [] };
+  return { judgment_id: `j-${id}`, lesson: { lesson_id: id, page_id: pageId, status: 'candidate', count: 1, helped: 0,
+    harmful: 0, measured: false, created_run: batch.run_id, project_id: 'github.com/example/project', agent_id: 'codex',
+    user_id: 'u', skill_target: null, scenario: situation, situation, advice: `advice ${id}`, because: `because ${id}`,
+    applies_to: appliesTo, polarity: 'from_failure', evidence: [], counter_examples: { searched: true, traces_checked: [], found: [] },
+    listed: true } };
+});
+const halves = batch.halves.map(half => {
+  const pages = half.sessions.map((session, index) => {
+    const part = session.chunks[0];
+    const line = part.text.split('\n').find(text => /^\d+: /.test(text));
+    if (!line) throw new Error(`missing numbered uploaded evidence for ${session.trace_id}`);
+    const lineNumber = Number(line.slice(0, line.indexOf(':')));
+    const pageId = `${batch.run_id}-${half.harness}-${index + 1}`;
+    const page = {
+      page_id: pageId, summary: `Recorded root cause from ${session.trace_id}`, class: 'SKILL_DEFECT',
+      root_cause: { subject: 'fixture task', relation: 'needs', fact: 'a check after the write',
+        valid_at: new Date(session.source_mtime_ms).toISOString(), evidence_pages: [], evidence_traces: [session.trace_id] },
+      fix: 'verify the result', scenario: { task_type: 'write', trigger: 'result missing', tools: [] },
+      skills_used: session.skills_loaded, skill_target: target.path.replace(/\/SKILL\.md$/, ''), knowledge_used: [],
+      outcome: session.local_outcome, agent_id: half.harness, project_id: session.project_id, user_id: session.user_id,
+      evidence: [session.trace_id], citations: [{ trace_id: session.trace_id, line_start: lineNumber,
+        line_end: lineNumber, quote: line.slice(line.indexOf(': ') + 2, line.indexOf(': ') + 14) }],
+      counter_examples: 'not searched', superseded: false, body: `Cited ${session.trace_id}.\n`,
+      count: 1, task_ids: [session.session_id], last_seen: new Date(session.source_mtime_ms).toISOString(),
+      skills_observed: session.skills_loaded,
+    };
+    return { judgment_id: `${batch.run_id}-${half.harness}-page-${index + 1}`, page };
+  });
+  const proposal = {
+    kind: 'patch', target: target.path, region: 'body', class: 'SKILL_DEFECT',
+    purpose: { summary: 'verify the fixture result after writing', page_ids: [pages[0].page.page_id] },
+    scenario: { task_type: 'write', trigger: 'result missing', tools: [] },
+    skills_used: [], skill_target: target.path.replace(/\/SKILL\.md$/, ''), knowledge_used: [],
+    outcome: 'fail', evidence: [half.sessions[0].trace_id],
+    ops: [{ op: 'append', text: 'Verify the fixture result after writing.\n' }],
+  };
+  return { harness: half.harness,
+    attention: half.sessions.map(session => ({ trace_id: session.trace_id, jev_outcome: null,
+      fail_probability: null, basis: 'local-fallback' })),
+    pages, lessons: half === batch.halves[0] ? fixtureLessons(pages[0].page.page_id) : [], proposals: [{ judgment_id: `${batch.run_id}-${half.harness}-proposal`, proposal }],
+    read_judgments: [], log_entry: `Recorded ${half.sessions.length} cited sessions for ${half.harness}` };
+});
+process.stdout.write(`${JSON.stringify({ schema_version: 1, run_id: batch.run_id, history_acknowledged: true,
+  history_links: [], halves })}\n`);

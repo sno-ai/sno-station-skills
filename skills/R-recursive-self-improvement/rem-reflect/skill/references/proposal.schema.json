@@ -1,0 +1,183 @@
+{
+  "type": "object",
+  "properties": {
+    "kind": {
+      "enum": [
+        "create",
+        "patch",
+        "no_action"
+      ]
+    },
+    "target": {
+      "type": "string"
+    },
+    "region": {
+      "enum": [
+        "body",
+        "reminders"
+      ]
+    },
+    "class": {
+      "enum": [
+        "SKILL_DEFECT",
+        "EXECUTION_LAPSE"
+      ]
+    },
+    "purpose": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "page_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "summary",
+        "page_ids"
+      ],
+      "additionalProperties": false
+    },
+    "scenario": {
+      "$ref": "#/$defs/scenario"
+    },
+    "skills_used": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 0
+    },
+    "skill_target": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "knowledge_used": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 0
+    },
+    "outcome": {
+      "enum": [
+        "success",
+        "fail",
+        "unknown"
+      ]
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 0
+    },
+    "skill_md": {
+      "type": "string"
+    },
+    "ops": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/operation"
+      },
+      "minItems": 0
+    },
+    "line": {
+      "type": "string"
+    },
+    "replace_line": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "purpose"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "scenario": {
+      "type": "object",
+      "properties": {
+        "task_type": {
+          "type": "string"
+        },
+        "trigger": {
+          "type": "string"
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "task_type",
+        "trigger",
+        "tools"
+      ],
+      "additionalProperties": false
+    },
+    "operation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "append"
+            },
+            "target": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "enum": [
+                "replace",
+                "insert_after"
+              ]
+            },
+            "target": {
+              "type": "string",
+              "minLength": 1
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "target",
+            "text"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

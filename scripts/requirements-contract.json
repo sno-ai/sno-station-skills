@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "program_ids": ["reach", "heartbeat", "subscription-quota-check", "report-time"],
+  "slot_ids": ["4.shell", "4.file-read-write", "4.background-processes", "2.pre-turn-context-injection", "3.reader-to-agent-delivery"],
+  "need_values": ["required", "preferred", "optional"],
+  "version_pattern": "^[0-9]+[.][0-9]+([.][0-9]+)?$"
+}

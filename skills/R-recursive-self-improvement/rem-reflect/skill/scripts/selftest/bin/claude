@@ -1,0 +1,2 @@
+#!/usr/bin/env node
+require(require("node:path").join(__dirname, "shim-core.cjs"))("claude");

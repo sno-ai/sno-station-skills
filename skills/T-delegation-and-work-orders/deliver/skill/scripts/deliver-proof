@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+# Usage: deliver-proof run CHARTER N -- COMMAND... | see CHARTER N FILE TEXT | check CHARTER.
+# Needs bash 4+ and GNU coreutils (Linux). The charter basename drops a final .md.
+# A command runs in the current directory. A `see` evidence path is read from the current
+# directory and recorded relative to the charter's directory.
+# A Success check whose text starts with ~~ (struck through) is dropped: not required, not provable.
+# Success check numbers must be unique across the whole charter, slices included.
+# Command output goes to stderr and its log; stdout carries only the summary.
+# Existing Proof rows stay before the next section; a missing Proof section is added at EOF.
+# Repeated runs within one UTC second use numbered log names.
+set -Eeuo pipefail
+
+if (( BASH_VERSINFO[0] < 4 )) || [[ "$(realpath --version 2>&1)" != *GNU* ]]; then
+    printf 'deliver-proof needs bash 4+ and GNU coreutils (Linux); found bash %s\n' "$BASH_VERSION" >&2
+    exit 2
+fi
+
+usage() {
+    local status="${1:-2}"
+    printf 'usage: deliver-proof run CHARTER N -- COMMAND... | see CHARTER N FILE TEXT | check CHARTER\n' >&"$((status == 0 ? 1 : 2))"
+    exit "$status"
+}
+
+append_row() {
+    local charter="$1" row="$2" tmp
+    tmp="$(mktemp "${charter}.XXXXXX")"
+    chmod --reference="$charter" -- "$tmp"
+    PROOF_ROW="$row" awk '
+        function flush_blanks(    i) {
+            for (i = 0; i < blanks; i++) print ""
+            blanks = 0
+        }
+        BEGIN {
+            row = ENVIRON["PROOF_ROW"]
+            header = "| check | result | how | exit | log | at (UTC) |"
+            separator = "| --- | --- | --- | --- | --- | --- |"
+        }
+        $0 == "## Proof" { proof = 1; found = 1; print; next }
+        proof && /^## / {
+            if (!header_seen) { print header; print separator }
+            print row
+            flush_blanks()
+            proof = 0
+        }
+        proof && /^[[:space:]]*$/ { blanks++; next }
+        proof { flush_blanks() }
+        proof && $0 == header { header_seen = 1 }
+        { print }
+        END {
+            if (proof) {
+                if (!header_seen) { print header; print separator }
+                print row
+                flush_blanks()
+            } else if (!found) {
+                print "\n## Proof\n"
+                print header
+                print separator
+                print row
+            }
+        }
+    ' "$charter" >"$tmp"
+    mv -- "$tmp" "$charter"
+}
+
+[[ $# -gt 0 ]] || usage 0
+if [[ $1 == --help && $# -eq 1 ]]; then
+    usage 0
+fi
+case "$1" in
+    run) [[ $# -ge 5 && $4 == -- ]] || usage ;;
+    see) [[ $# -eq 5 ]] || usage ;;
+    check) [[ $# -eq 2 ]] || usage ;;
+    *) usage ;;
+esac
+
+[[ -f $2 && -r $2 ]] || { printf 'cannot read charter: %s\n' "$2" >&2; exit 2; }
+charter="$(realpath -- "$2")"
+charter_dir="$(dirname -- "$charter")"
+mapfile -t checks < <(awk '
+    $0 == "## Success checks" { section = 1; next }
+    /^## / { section = 0 }
+    section && /^[0-9]+[.][[:space:]]+~~/ { next }
+    section && /^[0-9]+[.]/ { match($0, /^[0-9]+[.]/); print substr($0, 1, RLENGTH - 1) }
+' "$charter")
+duplicate="$(printf '%s\n' "${checks[@]}" | sort | uniq -d | head -n 1)"
+[[ -z $duplicate ]] || { printf 'Success check number %s appears more than once in %s; number checks uniquely across all slices\n' "$duplicate" "$charter" >&2; exit 2; }
+(( ${#checks[@]} > 0 )) || { printf 'charter has no numbered Success checks: %s\n' "$charter" >&2; exit 2; }
+
+if [[ $1 == check ]]; then
+    declare -A latest_result=() latest_log=()
+    while IFS=$'\t' read -r number result log; do
+        [[ -n $number ]] || continue
+        latest_result[$number]="$result"
+        latest_log[$number]="$log"
+    done < <(awk '
+        $0 == "## Proof" { proof = 1; next }
+        /^## / { proof = 0 }
+        proof && /^\|[[:space:]]*[0-9]+[[:space:]]*\|/ {
+            line = $0
+            gsub(/\\\|/, "\034", line)
+            split(line, cell, "|")
+            for (i = 2; i <= 6; i++) {
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", cell[i])
+                gsub(/\034/, "|", cell[i])
+            }
+            print cell[2] "\t" cell[3] "\t" cell[6]
+        }
+    ' "$charter")
+    proven=0
+    for number in "${checks[@]}"; do
+        if [[ ! -v latest_result[$number] ]]; then
+            printf 'check %s: NOT proven (no proof row)\n' "$number"
+        elif [[ ${latest_result[$number]} != pass ]]; then
+            printf 'check %s: NOT proven (latest result is %s)\n' "$number" "${latest_result[$number]}"
+        elif [[ ! -e "$charter_dir/${latest_log[$number]}" ]]; then
+            printf 'check %s: NOT proven (log or evidence missing)\n' "$number"
+        else
+            printf 'check %s: proven\n' "$number"
+            proven=$((proven + 1))
+        fi
+    done
+    printf '%s/%s checks proven\n' "$proven" "${#checks[@]}"
+    (( proven == ${#checks[@]} ))
+    exit $?
+fi
+
+number="$3"
+valid=0
+for check_number in "${checks[@]}"; do
+    [[ $number == "$check_number" ]] && valid=1
+done
+(( valid )) || { printf 'no Success check %s in %s\n' "$number" "$charter" >&2; exit 2; }
+
+at="$(date -u +%Y%m%dT%H%M%SZ)"
+if [[ $1 == see ]]; then
+    [[ -f $4 && -s $4 ]] || { printf 'evidence missing or empty: %s\n' "$4" >&2; exit 2; }
+    log="$(realpath -m --relative-to="$charter_dir" -- "$4")"
+    how="see: $5"
+    status=0
+    result=pass
+else
+    base="$(basename -- "$charter")"
+    base="${base%.md}"
+    log="$base.proof/$number-$at.log"
+    mkdir -p -- "$charter_dir/$base.proof"
+    suffix=2
+    while [[ -e "$charter_dir/$log" ]]; do
+        log="$base.proof/$number-$at-$suffix.log"
+        suffix=$((suffix + 1))
+    done
+    set +e
+    "${@:5}" </dev/null 2>&1 | tee -- "$charter_dir/$log" >&2
+    statuses=("${PIPESTATUS[@]}")
+    set -e
+    status="${statuses[0]}"
+    [[ ${statuses[1]} -eq 0 ]] || { printf 'could not write proof log: %s\n' "$charter_dir/$log" >&2; exit 2; }
+    result=fail
+    (( status == 0 )) && result=pass
+    how="run: ${*:5}"
+fi
+how="${how//$'\n'/ }"
+how="${how//$'\r'/ }"
+how="${how//|/\\|}"
+row="| $number | $result | $how | $status | $log | $at |"
+append_row "$charter" "$row"
+printf 'check %s: %s (exit %s)\n' "$number" "$result" "$status"
+exit "$status"

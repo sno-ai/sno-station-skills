@@ -1,0 +1,15 @@
+{
+  "unit": "subscription-quota-check",
+  "category": "S",
+  "tier": "candidate",
+  "split": {},
+  "source": {
+    "repo": "sno-station-skills-core",
+    "commit": "e517c978e0c98fda2c681ac547cbcca3d7f433cd",
+    "unit_tree_clean": true
+  },
+  "selftests_run": 1,
+  "contract_sha256": "5022662b4807e817533b5edc1700fb40e87deccaf47d25f82d941baeacf18b62",
+  "payload_sha256": "479c4353066ac6066ab923f05a2fc9aa043e65642c8b051f03f83210473be305",
+  "published_at": "2026-10-01T04:21:05Z"
+}
