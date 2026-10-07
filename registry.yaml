@@ -19,6 +19,7 @@ units:
   peer-review:                 {cat: J, tier: shipped}
   less-is-more:                {cat: J, tier: shipped}
   medic:                       {cat: M, tier: shipped}
+  sno-cli:                     {cat: M, tier: shipped}
   handoff:                     {cat: S, tier: shipped}
   heartbeat:                   {cat: S, tier: shipped}
   join-talk:                   {cat: S, tier: shipped}

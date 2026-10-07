@@ -71,7 +71,7 @@ try:
     assert "references/subscription-quota-check-contract.json" in text, "bundled contract link"
     heartbeat_contract = json.loads((root / "references/heartbeat-contract.json").read_text())
     assert heartbeat_contract["program"] == "heartbeat" and heartbeat_contract["min_version"] == "1.0", "wait command contract"
-    for command in re.finditer(r"^heartbeat ([^\n]+)$", text, re.M):
+    for command in re.finditer(r"^sno heartbeat ([^\n]+)$", text, re.M):
         arguments = re.split(r"\s--\s", command[1], maxsplit=1)[0]
         for flag in re.findall(r"--[a-z][a-z-]*", arguments):
             assert flag in heartbeat_contract["flags"], f"unknown wait command flag: {flag}"
@@ -95,9 +95,9 @@ try:
         "reset window": r"seconds_to_reset.*?\*\*blocking\*\* window",
         "bounded delayed wake": r"heartbeat --label quota-reset --interval.*?--max-ticks 2.*?--max-hours 0.*?-- date -u",
         "no immediate read": r"first tick runs immediately.*?Do not query quota\s+on that tick",
-        "one delayed read": r"On that second tick, run `subscription-quota-check` once",
+        "one delayed read": r"On that second tick, run `sno subscription-quota-check` once",
         "no recurring probe": r"never put the quota command in a recurring hook",
-        "wait dependency": r"arm `heartbeat` using its background-and-reader procedure",
+        "wait dependency": r"arm `sno heartbeat` using its background-and-reader procedure",
         "fresh confirmation": r"only a fresh read proves a block is gone",
         "authentication": r"Not logged in is not out of quota",
     }.items():

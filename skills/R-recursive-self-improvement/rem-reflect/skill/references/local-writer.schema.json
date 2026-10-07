@@ -1,0 +1,48 @@
+{
+  "type": "object",
+  "properties": {
+    "lesson": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/lesson" }] }
+  },
+  "required": ["lesson"],
+  "additionalProperties": false,
+  "$defs": {
+    "lesson": {
+      "type": "object",
+      "properties": {
+        "summary": { "type": "string", "minLength": 1 },
+        "class": { "enum": ["SKILL_DEFECT", "EXECUTION_LAPSE"] },
+        "situation": {
+          "type": "object",
+          "properties": {
+            "task_type": { "type": "string", "minLength": 1 },
+            "trigger": { "type": "string", "minLength": 1 },
+            "tools": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": ["task_type", "trigger", "tools"],
+          "additionalProperties": false
+        },
+        "advice": { "type": "string", "minLength": 1 },
+        "because": { "type": "string", "minLength": 1 },
+        "polarity": { "enum": ["from_failure", "from_success"] },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "line_start": { "type": "integer", "minimum": 1 },
+              "line_end": { "type": "integer", "minimum": 1 },
+              "quote": { "type": "string", "minLength": 1 }
+            },
+            "required": ["line_start", "line_end", "quote"],
+            "additionalProperties": false
+          }
+        },
+        "skill_target": { "oneOf": [{ "type": "string" }, { "type": "null" }] },
+        "reminder_line": { "oneOf": [{ "type": "string" }, { "type": "null" }] }
+      },
+      "required": ["summary", "class", "situation", "advice", "because", "polarity", "evidence", "skill_target", "reminder_line"],
+      "additionalProperties": false
+    }
+  }
+}

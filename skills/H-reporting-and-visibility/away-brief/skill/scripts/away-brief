@@ -4,15 +4,15 @@
 # heartbeats, the quota reader); the one thing it writes is its own list of quota readings (Reach may also note that it has seen the cards its inbox read listed), because a
 # reading shows usage now and only two readings show what was spent. A source it cannot read is named on
 # a `not read: <what> -> <why>` line and the rest still prints.
-# Exit 0 printed, 2 bad usage. Needs bash 4+, GNU date and find, git and jq; deliver-proof, handoff-checkpoint
-# records, sno, heartbeat and subscription-quota-check are used when present.
+# Exit 0 printed, 2 bad usage. Needs bash 4+, GNU date and find, git and jq; sno deliver-proof, sno handoff-checkpoint
+# records, sno, sno heartbeat and sno subscription-quota-check are used when present.
 set -Eeuo pipefail
 
 usage() {
   local status="${1:-2}"
   cat >&"$((status == 0 ? 1 : 2))" <<'USAGE'
-usage: away-brief run [--since 12h|2d|30m|<date>] [--repo DIR]... [--charters DIR]... [--as <seat>]
-       away-brief mark
+usage: sno away-brief run [--since 12h|2d|30m|<date>] [--repo DIR]... [--charters DIR]... [--as <seat>]
+       sno away-brief mark
 run   prints the page: ## Done, ## Stuck, ## Needs you, ## Spend (60 lines at most). Default cutoff 12h,
       default repo the git work tree of the current folder. Charters and progress records are searched
       in the repos and in every --charters folder. --as (or SNO_REACH_ADDR) is the seat whose Reach inbox
@@ -59,9 +59,9 @@ have() { command -v "$1" >/dev/null 2>&1; }
 
 # ---- quota readings: current values, stored so a later page can show the change
 read_quota() { # prints one line per vendor: vendor|five_hour|weekly (empty = not reported; | because read collapses tabs); returns 1 when unreadable
-  have subscription-quota-check && have jq || return 1
+  have sno && have jq || return 1
   local out
-  out="$(timeout 60 subscription-quota-check --json --quiet 2>/dev/null || true)"
+  out="$(timeout 60 sno subscription-quota-check --json --quiet 2>/dev/null || true)"
   jq -e '.vendors | type == "array"' >/dev/null 2>&1 <<<"$out" || return 1
   jq -r '.vendors[] | [.vendor, (.five_hour.used_pct // "" | tostring), (.seven_day.used_pct // (.tightest_window.used_pct // "") | tostring)] | join("|")' <<<"$out"
 }
@@ -84,7 +84,7 @@ if [[ "$mode" == mark ]]; then
       printf '%s\n' "$not_stored"; exit 1
     fi
   else
-    printf 'not read: quota (subscription-quota-check) -> no usable answer; nothing stored\n'
+    printf 'not read: quota (sno subscription-quota-check) -> no usable answer; nothing stored\n'
   fi
   exit 0
 fi
@@ -122,7 +122,7 @@ find_files() { # <name glob> <marker regex>
 }
 front() { sed -n '1,/^---$/{/^---$/!p}' "$2" | sed -n "s/^$1: *//p" | head -n1; }
 
-if have deliver-proof; then
+if have sno; then
   n_done=0 n_stuck=0
   while IFS= read -r f; do
     [[ -n "$f" ]] || continue
@@ -132,14 +132,14 @@ if have deliver-proof; then
     (( ${#title} <= 70 )) || title="${title:0:70}..."
     mtime="$(stat -c %Y "$f")"
     if [[ "$status" == delivered ]] && (( mtime >= cutoff_epoch )); then
-      summary="$(deliver-proof check "$f" 2>/dev/null | tail -n1 || true)"
+      summary="$(sno deliver-proof check "$f" 2>/dev/null | tail -n1 || true)"
       if [[ "$summary" =~ ^([0-9]+)/([0-9]+)\ checks\ proven && "${BASH_REMATCH[1]}" == "${BASH_REMATCH[2]}" ]]; then
         (( ++n_done <= LIST_MAX )) && done_+=("charter delivered: $title (${BASH_REMATCH[1]}/${BASH_REMATCH[2]} checks proven) $f")
       else
-        (( ++n_stuck <= LIST_MAX )) && stuck+=("charter marked delivered but its proofs do not check out: $title, ${summary:-no result from deliver-proof}; $f")
+        (( ++n_stuck <= LIST_MAX )) && stuck+=("charter marked delivered but its proofs do not check out: $title, ${summary:-no result from sno deliver-proof}; $f")
       fi
     elif [[ "$status" == released ]]; then
-      report="$(deliver-proof check "$f" 2>/dev/null || true)"
+      report="$(sno deliver-proof check "$f" 2>/dev/null || true)"
       summary="$(tail -n1 <<<"$report")"
       if [[ "$summary" =~ ^([0-9]+)/([0-9]+)\ checks\ proven ]] && [[ "${BASH_REMATCH[1]}" != "${BASH_REMATCH[2]}" ]]; then
         bad="$(sed -n 's/^check \([0-9]*\): NOT proven.*/check \1/p' <<<"$report" | paste -sd, | sed 's/,/, /g')"
@@ -147,14 +147,14 @@ if have deliver-proof; then
       elif [[ "$summary" =~ ^([0-9]+)/([0-9]+)\ checks\ proven ]]; then
         (( ++n_stuck <= LIST_MAX )) && stuck+=("charter ready to close: $title, all ${BASH_REMATCH[2]} checks proven but its status is still released; $f")
       else
-        (( ++n_stuck <= LIST_MAX )) && stuck+=("charter proofs could not be read: $title, ${summary:-no result from deliver-proof}; $f")
+        (( ++n_stuck <= LIST_MAX )) && stuck+=("charter proofs could not be read: $title, ${summary:-no result from sno deliver-proof}; $f")
       fi
     fi
   done < <(find_files '*.md' '^## Success checks$')
   (( n_done <= LIST_MAX )) || done_+=("  and $((n_done - LIST_MAX)) more delivered charters")
   (( n_stuck <= LIST_MAX )) || stuck+=("  and $((n_stuck - LIST_MAX)) more unfinished charters")
 else
-  stuck+=("not read: charters -> deliver-proof is not installed, so proofs cannot be counted")
+  stuck+=("not read: charters -> sno deliver-proof is not installed, so proofs cannot be counted")
 fi
 
 n_rec=0
@@ -198,9 +198,9 @@ else
 fi
 
 # ---- spend
-if have heartbeat; then
-  mine="$(timeout 10 heartbeat --list 2>/dev/null | awk '$1 == "you"' | grep -c . || true)"
-  total="$(timeout 10 heartbeat --list 2>/dev/null | grep -Ev '^(WHO|\()' | grep -c . || true)"
+if have sno; then
+  mine="$(timeout 10 sno heartbeat --list 2>/dev/null | awk '$1 == "you"' | grep -c . || true)"
+  total="$(timeout 10 sno heartbeat --list 2>/dev/null | grep -Ev '^(WHO|\()' | grep -c . || true)"
   spend+=("background: $mine heartbeat$([[ $mine == 1 ]] || printf s) of yours running ($total on this machine)")
 fi
 if lines="$(read_quota)" && [[ -n "$lines" ]]; then
@@ -229,7 +229,7 @@ if lines="$(read_quota)" && [[ -n "$lines" ]]; then
   done <<<"$lines"
   store_readings <<<"$lines" || spend+=("$not_stored")
 else
-  spend+=("not read: quota (subscription-quota-check) -> it is missing or gave no usable answer")
+  spend+=("not read: quota (sno subscription-quota-check) -> it is missing or gave no usable answer")
 fi
 
 # ---- the page

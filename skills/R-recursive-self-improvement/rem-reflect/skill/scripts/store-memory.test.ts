@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync } from 'node:fs';
+import { readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
@@ -40,8 +40,9 @@ test('a trace read without text keeps its summary and loses only the records', (
   assert.deepEqual(one.filter(trace => trace.records.length).map(trace => trace.session_id), ['old0']);
 });
 
-test('a night over a large history holds only its own sessions in memory', () => {
-  const { store } = bigStore(30, 2500);
+test('a night over a large history holds only its own sessions in memory', t => {
+  const { config, store } = bigStore(30, 2500);
+  t.after(() => { for (const dir of [store, config.claude_root, config.codex_root]) rmSync(dir, { recursive: true, force: true }); });
   const size = readdirSync(join(store, 'raw'), { recursive: true }).length;
   assert.ok(size > 30, 'the history is on disk');
   const scripts = pathToFileURL(new URL('./', import.meta.url).pathname).href;

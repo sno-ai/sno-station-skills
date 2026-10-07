@@ -16,9 +16,9 @@ requires:
 
 Needs: `tmux`, `jq`, the `sno` CLI with its Reach runtime (`sno reach`), both vendor CLIs
 (`claude` and `codex`, each installed and logged in, since the quota of both is read), plus
-`heartbeat` and `subscription-quota-check` from the same install, and the `handoff` skill (its `handoff-checkpoint` keeps the progress record). A seat is a registered terminal
+`sno heartbeat` and `sno subscription-quota-check` from the same install, and the `handoff` skill (its `sno handoff-checkpoint` keeps the progress record). A seat is a registered terminal
 address (see `join-talk`). The owner is the person (or agent) who owns the work; the watchman
-usually is that owner's session. The `heartbeat` command runs in the background
+usually is that owner's session. The `sno heartbeat` command runs in the background
 and its log is read by a reader (a background-process tool and a log-tail tool; the examples below
 are Claude Code syntax, so use your harness's equivalents).
 
@@ -28,7 +28,7 @@ quota, and when the remaining share falls to the threshold the watchman tells th
 agent to hand the task over to a fresh agent from the other vendor. The handoff itself is the
 `handoff` skill, unchanged; rotation only decides **when** and **to whom**.
 
-Quota is normally read on demand only: `subscription-quota-check` reads it when the person asks
+Quota is normally read on demand only: `sno subscription-quota-check` reads it when the person asks
 or after a vendor refuses work, and never on a timer of its own. Rotation is the one deliberate
 exception. The person's request to rotate is the moment; arming this skill authorizes the
 watchman's heartbeat to read the working vendor's quota every few minutes (the arming example
@@ -59,7 +59,7 @@ Put these after the task instruction:
 
 ```
 $join-talk
-After every completed task, commit and run `handoff-checkpoint <record>` (the progress record, kept outside the checkout), then update its Done and Next lists.
+After every completed task, commit and run `sno handoff-checkpoint <record>` (the progress record, kept outside the checkout), then update its Done and Next lists.
 When you receive "ROTATE: hand off to <vendor> now", stop editing and run $handoff to a receiver of that vendor at once.
 ```
 
@@ -85,7 +85,7 @@ clean run is `READY`. Do not arm on a `FAIL`: give the owner the `->` part verba
 vendor's first run in a directory stops at its trust prompt, and that key is the owner's
 to press) and rerun the preflight after they act.
 
-Arming is two calls, as `heartbeat` requires (shown in Claude Code syntax: one call starts the
+Arming is two calls, as `sno heartbeat` requires (shown in Claude Code syntax: one call starts the
 background process, the other tails its log; use your harness's own tools for both). Create a fresh empty log with
 `mktemp "${TMPDIR:-/tmp}/heartbeat.XXXXXX"` and a state path under
 `${XDG_STATE_HOME:-$HOME/.local/state}/rotate-agent/<label>.state` that does not exist yet.
@@ -93,8 +93,8 @@ background process, the other tails its log; use your harness's own tools for bo
 ```
 Bash({
   run_in_background: true,
-  command: "heartbeat --interval 5 --max-hours 0 --label rotate-agent-<work> --log \"<LOG>\" \
-    -- rotate-agent-watch --from codex --to claude --threshold-pct 2 --state \"<STATE>\""
+  command: "sno heartbeat --interval 5 --max-hours 0 --label rotate-agent-<work> --log \"<LOG>\" \
+    -- rotate-agent-watch --from codex --to claude --threshold-pct 2 --state \"<STATE>\" --cwd \"<checkout>\""
 })
 
 Monitor({
@@ -114,11 +114,15 @@ Every tick of `rotate-agent-watch` prints one line. Say what it says, then act o
 | `HOLD from=… remaining=N% threshold=T%` | above threshold | nothing |
 | `HOLD receiver-<verdict> …` | threshold crossed but the other vendor is also blocked | nothing; report it — the run will end at refusal and needs resume from what is on disk |
 | `HOLD unreadable …` | quota could not be read on this tick | nothing; three in a row is worth reporting |
-| `ROTATE from=X to=Y remaining=N% …` | threshold crossed, receiver has headroom, state file written | send the order (below), then `heartbeat --stop rotate-agent-<work>` |
-| `DONE rotated <time> …` | a ROTATE already fired | stop the heartbeat if still running |
+| `ROTATE from=X to=Y remaining=N% …` | threshold crossed, receiver has headroom, state file written | send the order (below); keep the heartbeat running |
+| `DONE rotated <time> …` | a ROTATE already fired | keep waiting for COMPLETE; after COMPLETE, stop the heartbeat if still running |
+| `COMPLETE from=X to=Y seconds=… commits_before=… commits_after=…` | the checkout has a new commit after the order | `sno heartbeat --stop rotate-agent-<work>` |
 | `LATE blocked …` | sender already refused | resume from what is on disk (below); stop the heartbeat |
 
-The hook fires `ROTATE` once: the state file is the lock, and every later tick prints `DONE`.
+The hook fires `ROTATE` once: the state file is the lock. Later ticks print `DONE` until
+the checkout has a new commit, then print `COMPLETE` once. Stop the heartbeat after
+`COMPLETE`, not after `ROTATE`. A receiver that never commits leaves the heartbeat running
+until its `--max-hours` limit; choose that limit when arming.
 To re-arm for a second rotation (the receiver may run out too), use a new label and a new
 state path with the seats swapped.
 
@@ -148,11 +152,11 @@ process behind the seat.
 ## When the window was missed: resume from the progress record
 
 If a tick says `LATE`, or the order gets no release, A is gone. Start B with one command. It points B
-at the progress record A kept with `handoff-checkpoint`, so B continues from the record's Next list and
+at the progress record A kept with `sno handoff-checkpoint`, so B continues from the record's Next list and
 does not redo what Done lists:
 
 ```
-rotate-agent-resume --to <to-vendor> --cwd <checkout> --checkpoint <record> --work <work> --report-to <owner session>
+sno rotate-agent-resume --to <to-vendor> --cwd <checkout> --checkpoint <record> --work <work> --report-to <owner session>
 ```
 
 The command first refuses (`FAIL checkout`) when the record belongs to a different checkout than `--cwd`,
@@ -172,7 +176,7 @@ timed out; an ACP seat's work (see the `handoff` skill, step 2) is lost once its
 expires.
 
 This is the fallback, not the design: it loses whatever A had half-done since its last checkpoint,
-which is why the working agent runs `handoff-checkpoint` after every task.
+which is why the working agent runs `sno handoff-checkpoint` after every task.
 
 ## Five things that stay true
 

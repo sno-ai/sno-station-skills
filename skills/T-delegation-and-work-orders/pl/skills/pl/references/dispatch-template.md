@@ -121,7 +121,7 @@ UI guidance, not dispatch content; selecting the block starts at `mission:`.
    Keep the seat address returned by the spawn. Confirm it with
    `sno reach doctor --as <address>`, then read it once with `sno reach watch <seat> --timeout 5`.
    The status callbacks are the log watch with `--ring` (above) and the sentinel
-   `heartbeat --interval 1m --label sentinel-<callsign> -- bash "${PL_SKILL_DIR}/scripts/exec-sentinel.sh" --log <spawn-log> --repo <worktree> --journey <j-id> --pl "$PL_ADDR" --cos "$COS_ADDR" --tick-secs 60`
+   `sno heartbeat --interval 1m --label sentinel-<callsign> -- bash "${PL_SKILL_DIR}/scripts/exec-sentinel.sh" --log <spawn-log> --repo <worktree> --journey <j-id> --pl "$PL_ADDR" --cos "$COS_ADDR" --tick-secs 60`
    (`PL_ADDR` and `COS_ADDR` come from the boot ritual's lane-resolve row; on a lane no COS
    has claimed, `COS_ADDR` is the owner's address);
    a ring is wake-only, never processing proof. Use `sno reach seats --json` only to recover
@@ -220,7 +220,7 @@ UI guidance, not dispatch content; selecting the block starts at `mission:`.
    every dispatch): evidence-class questions (answerable from a file, a command or a test
    result) go as a
    complete question card sent with `sno reach send` (see the guide), then arm
-   `heartbeat --interval 45m --label pl-<callsign> -- sno reach ring <your-address>` and end the
+   `sno heartbeat --interval 45m --label pl-<callsign> -- sno reach ring <your-address>` and end the
    turn; the answer's own ring, or the heartbeat, starts the next turn. Read
    `sno reach inbox --as <your-address>` first, so crossed cards are handled first. If a heartbeat turn finds no answer,
    or the question is value-class (scope/tradeoffs/red-lines): **FIRST send a `decision` card to the PL** carrying
@@ -267,7 +267,7 @@ UI guidance, not dispatch content; selecting the block starts at `mission:`.
    approval authority stays with the owner; the card leg only makes the stop visible and the
    reply routable.
 6. **Close**: the close has three parts — (1) journal entry; (2) the charter's `## Report` and
-   (when `deliver` is installed) `deliver-proof check <charter>`; (3) the journey's `closed` line in
+   (when `deliver` is installed) `sno deliver-proof check <charter>`; (3) the journey's `closed` line in
    `ai-doc/JOURNAL/routing-ledger.jsonl` (written by hand; `todo.sh close` adds its own
    `board_closed` line for a board row), which carries a one-line estimate-versus-actual note in its outcome: estimate vs actual
    in one line and WHAT the estimate missed, or "on-target"; future estimates anchor on
@@ -298,7 +298,7 @@ UI guidance, not dispatch content; selecting the block starts at `mission:`.
 
    **Sending the close-audit card is NOT done.** "Close-audit requested" is not "I am done"; you
    are done only when the PL's SEAL (or an explicit release) arrives. So after sending it, arm
-   `heartbeat --interval 10m --label pl-<callsign> -- sno reach ring <your-address>`, end the
+   `sno heartbeat --interval 10m --label pl-<callsign> -- sno reach ring <your-address>`, end the
    turn, and on each ring read `sno reach inbox --as <your-address>` and act on the reply: a
    SEAL/PASS ends you; a fix list means fix + re-request + keep the ring. **If a ring turn finds
    no verdict after 45 minutes, escalate a DURABLE record before you can be wall-killed**: send a
@@ -373,7 +373,7 @@ Process:
   the registered PL seat with subject "gate reached: plan (j-1)" and the
   charter path in the body; then park (plain text + heartbeat-ring + end turn).
 - Mid-run Q&A rides Reach cards: send a complete question card as executor.j-1@<host>,
-  then arm `heartbeat --interval 45m --label pl-<callsign> -- sno reach ring executor.j-1@<host>`
+  then arm `sno heartbeat --interval 45m --label pl-<callsign> -- sno reach ring executor.j-1@<host>`
   and end the turn; read `sno reach inbox --as executor.j-1@<host>` first on every
   ring; no answer on a heartbeat turn, or a value-class question → decision card to the PL
   FIRST (question + facts + options), then Blocker Card, park. Never pop an interactive choice widget.
@@ -386,11 +386,11 @@ Process:
   files; git add -A / commit -am are forbidden; explicit paths only.
 - Close: move the three old TECH_DEBT.md rows to Cleared (struck through, never
   deleted); new undispositioned findings get new rows; journal + charter Report +
-  `deliver-proof check <charter>` (when deliver is installed) + ledger closed line with an estimate-versus-actual note; last line names the next baton, ARMED
+  `sno deliver-proof check <charter>` (when deliver is installed) + ledger closed line with an estimate-versus-actual note; last line names the next baton, ARMED
   (step, estimate, verification plan, budget/kill line, "reply GO and it starts").
   Then bash "<PL_SKILL_DIR>/scripts/callsign.sh" banner <callsign> j-1 <journal-path>; verify git status
   shows none of this journey's work still staged; send the close-audit card to the
-  PL seat; arm `heartbeat --interval 10m --label pl-<callsign> -- sno reach ring
+  PL seat; arm `sno heartbeat --interval 10m --label pl-<callsign> -- sno reach ring
   executor.j-1@<host>`, end the turn, and act on the verdict read from the inbox on each
   ring. If a ring turn finds no verdict after 45 minutes send a decision Blocker to the PL AND
   an info card Cc'd to the owner's seat ("CLOSE-STALLED: j-1 awaiting seal since <t>"),

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Behaviour test for away-brief: real git repos, real charters proved with deliver-proof, real progress
-# records written by handoff-checkpoint. Only the external programs sno (Reach inbox), heartbeat and the
-# quota reader are stand-ins.
+# Behaviour test for away-brief: real git repos, real charters proved with sno deliver-proof, real progress
+# records written by sno handoff-checkpoint. Only the sno subcommands reach inbox, heartbeat and
+# subscription-quota-check are stand-ins; every other sno call goes to the real sno.
 set -Eeuo pipefail
 
 command_path="$(realpath -- "${1:-$(dirname -- "${BASH_SOURCE[0]}")/away-brief}")"
-for tool in git jq deliver-proof handoff-checkpoint; do
+for tool in git jq sno; do
     command -v "$tool" >/dev/null || { printf 'SKIP: %s is not installed\n' "$tool"; exit 0; }
 done
 root="$(mktemp -d)"
@@ -17,22 +17,23 @@ run() { local status=0; PATH="$root/bin:$PATH" XDG_STATE_HOME="$root/state" SNO_
 has() { grep -Fq -- "$1" "$root/out"; }
 section() { awk -v h="## $1" '$0 == h { on = 1; next } /^## / { on = 0 } on' "$root/out"; }
 
-# ---- stand-ins for the three external programs
+# ---- stand-in for the sno subcommands reach inbox, heartbeat and subscription-quota-check
+export REAL_SNO="$(command -v sno)"
 mkdir -p "$root/bin" "$root/state" "$root/cards"
 cat >"$root/bin/sno" <<'SH'
 #!/usr/bin/env bash
-[[ "$1 $2" == "reach inbox" ]] || exit 64
-[[ -e "$FAKE_ROOT/inbox-broken" ]] && { echo 'inbox unreadable' >&2; exit 5; }
-cat "$FAKE_ROOT/inbox"
-SH
-cat >"$root/bin/heartbeat" <<'SH'
-#!/usr/bin/env bash
-[[ "$1" == --list ]] && cat "$FAKE_ROOT/heartbeats"
-SH
-cat >"$root/bin/subscription-quota-check" <<'SH'
-#!/usr/bin/env bash
-cat "$FAKE_ROOT/quota"
-exit "$(cat "$FAKE_ROOT/quota.exit" 2>/dev/null || echo 0)"
+case "$1" in
+    reach)
+        [[ "$1 $2" == "reach inbox" ]] || exit 64
+        [[ -e "$FAKE_ROOT/inbox-broken" ]] && { echo 'inbox unreadable' >&2; exit 5; }
+        cat "$FAKE_ROOT/inbox" ;;
+    heartbeat)
+        [[ "$2" == --list ]] && cat "$FAKE_ROOT/heartbeats" ;;
+    subscription-quota-check)
+        cat "$FAKE_ROOT/quota"
+        exit "$(cat "$FAKE_ROOT/quota.exit" 2>/dev/null || echo 0)" ;;
+    *) exec "$REAL_SNO" "$@" ;;
+esac
 SH
 chmod +x "$root/bin/"*
 export FAKE_ROOT="$root"
@@ -50,7 +51,7 @@ GIT_AUTHOR_DATE="$old" GIT_COMMITTER_DATE="$old" gc 'old work from days ago'
 gc 'add login page'
 gc 'fix login redirect'
 
-# ---- real charters, proved with deliver-proof
+# ---- real charters, proved with sno deliver-proof
 charter() { # file status title checks
     cat >"$1" <<E
 ---
@@ -65,7 +66,7 @@ updated: 2026-09-30
 $4
 
 ## Proof
-(Written only by \`deliver-proof\`. Never edited by hand.)
+(Written only by \`sno deliver-proof\`. Never edited by hand.)
 
 | check | result | how | exit | log | at (UTC) |
 |---|---|---|---|---|---|
@@ -74,17 +75,17 @@ $4
 E
 }
 charter "$repo/docs/done.md" delivered 'Ship the login page' $'1. login works\n2. redirect works'
-(cd "$repo/docs" && deliver-proof run done.md 1 -- true >/dev/null && deliver-proof run done.md 2 -- true >/dev/null)
+(cd "$repo/docs" && sno deliver-proof run done.md 1 -- true >/dev/null && sno deliver-proof run done.md 2 -- true >/dev/null)
 charter "$repo/docs/stuck.md" released 'Migrate the billing table' $'1. schema migrated\n2. old rows copied\n3. reports rebuilt'
-(cd "$repo/docs" && deliver-proof run stuck.md 1 -- true >/dev/null; deliver-proof run stuck.md 2 -- false >/dev/null || true)
+(cd "$repo/docs" && sno deliver-proof run stuck.md 1 -- true >/dev/null; sno deliver-proof run stuck.md 2 -- false >/dev/null || true)
 charter "$repo/docs/long.md" delivered 'A very long charter title that goes on and on and on and on and on and on and on and on and on and on' $'1. it worked'
-(cd "$repo/docs" && deliver-proof run long.md 1 -- true >/dev/null)
+(cd "$repo/docs" && sno deliver-proof run long.md 1 -- true >/dev/null)
 charter "$repo/docs/ancient.md" delivered 'Delivered long ago' $'1. it worked'
-(cd "$repo/docs" && deliver-proof run ancient.md 1 -- true >/dev/null)
+(cd "$repo/docs" && sno deliver-proof run ancient.md 1 -- true >/dev/null)
 touch -d '5 days ago' "$repo/docs/ancient.md"
 
 # ---- real progress records
-for r in quiet running finished; do (cd "$repo" && handoff-checkpoint "$root/$r.state.md" >/dev/null); done
+for r in quiet running finished; do (cd "$repo" && sno handoff-checkpoint "$root/$r.state.md" >/dev/null); done
 sed -i 's/^## Next$/## Next\n1. copy the old rows\n2. rebuild the reports/' "$root/quiet.state.md"
 sed -i 's/^by: .*/by: worker.one@host/; s/^updated: .*/updated: '"$(date -u -d '5 hours ago' +%Y-%m-%dT%H:%M:%SZ)"'/' "$root/quiet.state.md"
 sed -i 's/^## Next$/## Next\n1. write the summary/' "$root/running.state.md"
@@ -181,7 +182,7 @@ ok 'a run changes nothing but its own reading store'
 
 # a long Done list must not push Needs you and Spend off the page
 for n in $(seq 1 40); do
-    (cd "$repo" && handoff-checkpoint "$repo/notes/many$n.state.md" >/dev/null)
+    (cd "$repo" && sno handoff-checkpoint "$repo/notes/many$n.state.md" >/dev/null)
     sed -i 's/^## Next$/## Next\nNone./' "$repo/notes/many$n.state.md"
 done
 quota 25
@@ -211,8 +212,8 @@ status="$(run run --since 12h --repo "$repo" --as me@host)"
 cp "$root/inbox.keep" "$root/inbox"
 ok 'every waiting question is shown within the section budget'
 
-# a released charter whose proofs cannot be read (deliver-proof fails and prints nothing) is named, not dropped
-mkdir -p "$root/bin-broken"; printf '#!/usr/bin/env bash\nexit 1\n' >"$root/bin-broken/deliver-proof"; chmod +x "$root/bin-broken/deliver-proof"
+# a released charter whose proofs cannot be read (sno deliver-proof fails and prints nothing) is named, not dropped
+mkdir -p "$root/bin-broken"; printf '#!/usr/bin/env bash\n[[ "$1" == deliver-proof ]] && exit 1\nexec "%s/bin/sno" "$@"\n' "$root" >"$root/bin-broken/sno"; chmod +x "$root/bin-broken/sno"
 status=0; PATH="$root/bin-broken:$root/bin:$PATH" XDG_STATE_HOME="$root/state" SNO_REACH_ADDR= "$command_path" run --since 12h --repo "$repo" >"$root/out" 2>"$root/err" || status=$?
 grep -Fq 'proofs could not be read: Migrate the billing table' <<<"$(section Stuck)" || fail 'a released charter whose proofs cannot be read is listed under Stuck, naming the file'
 ok 'a charter whose proofs cannot be read is named under Stuck'
@@ -228,7 +229,7 @@ ok 'a reading store that cannot be written is named and does not end the page'
 
 # a charter marked delivered whose proofs do not check out is not listed as done
 charter "$repo/docs/liar.md" delivered 'Claims to be delivered' $'1. first\n2. second'
-(cd "$repo/docs" && deliver-proof run liar.md 1 -- true >/dev/null; deliver-proof run liar.md 2 -- false >/dev/null || true)
+(cd "$repo/docs" && sno deliver-proof run liar.md 1 -- true >/dev/null; sno deliver-proof run liar.md 2 -- false >/dev/null || true)
 status="$(run run --since 12h --repo "$repo")"
 ! grep -Fq 'charter delivered: Claims to be delivered' "$root/out" || fail 'a delivered charter with a failing proof is not listed as delivered'
 grep -Fq 'marked delivered but its proofs do not check out: Claims to be delivered' <<<"$(section Stuck)" && grep -Fq '1/2' <<<"$(section Stuck)" || fail 'it is listed under Stuck with how many checks are proven'

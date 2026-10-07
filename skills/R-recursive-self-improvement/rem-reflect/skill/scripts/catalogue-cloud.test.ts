@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { testTempRoot } from './test-helpers.ts';
 import { join } from 'node:path';
 import { installedCatalogue } from './catalogue.ts';
 
 test('cloud catalogue carries the complete body of every installed skill in both harness roots', t => {
-  const root = mkdtempSync(join(tmpdir(), 'rsi-catalogue-'));
+  const root = mkdtempSync(join(testTempRoot, 'rsi-catalogue-'));
   t.after(() => rmSync(root, { recursive: true }));
   const claude = join(root, 'claude');
   const codex = join(root, 'codex');

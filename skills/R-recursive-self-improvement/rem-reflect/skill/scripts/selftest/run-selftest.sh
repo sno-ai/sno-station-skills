@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The rem-reflect self-test runs the unit suite, then the full fixture journey
 # under a PATH that holds only an allowlist of programs — node, git, a named set of coreutils, and the
-# fixture claude / codex / heartbeat / sno shims — each a recording wrapper, so every child process exec is
+# fixture claude / codex / sno shims — each a recording wrapper, so every child process exec is
 # logged. It asserts the recorded exec list names no program outside the allowlist, and that a program
 # spawning python3 (outside the allowlist) fails naming it. It finishes well under 300 seconds.
 set -Eeuo pipefail
@@ -13,7 +13,9 @@ BIN_SRC="$HERE/bin"
 
 fail() { printf 'run-selftest: FAIL: %s\n' "$1" >&2; exit 1; }
 
-WORK="$(mktemp -d)"
+# On the home disk, not the system temp directory, which may be a RAM disk shared with other work.
+mkdir -p "$HOME/.cache/rem-reflect-tests"
+WORK="$(mktemp -d "$HOME/.cache/rem-reflect-tests/selftest.XXXXXX")"
 trap 'rm -rf -- "$WORK"' EXIT
 ALLOW_BIN="$WORK/bin"
 mkdir -p "$ALLOW_BIN"
@@ -37,15 +39,15 @@ for prog in "${ALLOW_PROGRAMS[@]}"; do
   chmod +x "$ALLOW_BIN/$prog"
 done
 # The fixture CLIs: the real shims, which self-record to EXEC_LOG. They need shim-core.cjs beside them.
-for shim in claude codex heartbeat sno sno-observe; do
+for shim in claude codex sno; do
   cp -- "$BIN_SRC/$shim" "$ALLOW_BIN/$shim"
   chmod +x "$ALLOW_BIN/$shim"
 done
 cp -- "$BIN_SRC/shim-core.cjs" "$ALLOW_BIN/shim-core.cjs"
 
-# The set of names allowed to appear in the exec log (the wrappers plus the four shims).
+# The set of names allowed to appear in the exec log (the wrappers plus the three shims).
 declare -A ALLOWED=()
-for prog in "${ALLOW_PROGRAMS[@]}" claude codex heartbeat sno sno-observe; do ALLOWED["$prog"]=1; done
+for prog in "${ALLOW_PROGRAMS[@]}" claude codex sno; do ALLOWED["$prog"]=1; done
 
 # The unit suite runs under the normal environment because it exercises tools outside the journey's allowlist.
 printf 'run-selftest: unit suite...\n'

@@ -1,5 +1,5 @@
 // Test-owned: the daily cadence is a same-day no-op that writes
-// nothing, a next-day run proceeds, and the unit is armed by `heartbeat` — no crontab, no busy loop.
+// nothing, a next-day run proceeds, and the unit is armed by `sno heartbeat` — no crontab, no busy loop.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
@@ -18,7 +18,7 @@ import type { Config } from './config.ts';
 const NOW = new Date('2026-09-08T12:00:00Z');
 const MT = new Date('2026-09-07T00:00:00Z').getTime();
 const UNIT_DIR = fileURLToPath(new URL('..', import.meta.url)); // skills/rem-reflect/skill/
-const ARM_LINE = 'heartbeat --interval 24h --max-hours 0 --label rem-reflect -- rem-reflect run';
+const ARM_LINE = 'sno heartbeat --interval 24h --max-hours 0 --label rem-reflect -- sno rem-reflect run';
 function cfg(): Config { return fixtureConfig({ claude_root: tmp('c'), codex_root: tmp('x') }); }
 function bothHalves(config: Config): void {
   writeClaudeSession(config.claude_root, 'proj', 'cc', [claudeUser('/n', 'cc', 'do it'), claudeAssistant('/n', 'cc', [{ type: 'text', text: 'ok' }])], MT);
@@ -73,7 +73,7 @@ test('a next-day run proceeds past the no-op guard', () => {
   assert.ok(staged.includes(calendar(NOW, config.time_zone).id), 'the run staged its own run id');
 });
 
-// the unit's SKILL.md names the exact heartbeat arm line the owner runs.
+// the unit's SKILL.md names the exact sno heartbeat arm line the owner runs.
 test('the unit SKILL.md names the exact heartbeat arm line', () => {
   const skillMd = readFileSync(join(UNIT_DIR, 'SKILL.md'), 'utf8');
   assert.ok(skillMd.includes(ARM_LINE), 'SKILL.md carries the exact heartbeat arm line');
@@ -98,16 +98,16 @@ test('the shipped unit source has no crontab and no busy-wait loop', () => {
   assert.ok(hits('rem-reflect').length > 0, 'grep can find a present string (instrument works)');
 });
 
-// the exact arm line's flags are accepted by the installed heartbeat. `heartbeat` is a
+// the exact arm line's flags are accepted by the installed `sno heartbeat`. `sno heartbeat` is a
 // foreground daemon, so it is spawned detached (never awaited); a unique label avoids colliding with a
 // real rem-reflect heartbeat; heartbeat fires the hook at once, so the run gets a fixture store.
 // The arm is stopped in a finally and the process group killed as a backstop.
 test('the installed heartbeat accepts the exact arm line flags and stops again', async () => {
-  // a short, unique label (never the real `rem-reflect`): `heartbeat --list` truncates the label
+  // a short, unique label (never the real `rem-reflect`): `sno heartbeat --list` truncates the label
   // column to ~20 chars, so a long label would never match its own listing.
   const label = `q19-${process.pid}`;
-  const list = (): string => { try { return execFileSync('heartbeat', ['--list'], { encoding: 'utf8' }); } catch { return ''; } };
-  const child = spawn('heartbeat', ['--interval', '24h', '--max-hours', '0', '--label', label, '--', 'rem-reflect', 'run'],
+  const list = (): string => { try { return execFileSync('sno', ['heartbeat', '--list'], { encoding: 'utf8' }); } catch { return ''; } };
+  const child = spawn('sno', ['heartbeat', '--interval', '24h', '--max-hours', '0', '--label', label, '--', 'sno', 'rem-reflect', 'run'],
     { detached: true, stdio: 'ignore', env: { ...process.env, REM_REFLECT_STORE: makeStore(fixtureConfig()) } });
   const spawnErr = await new Promise<NodeJS.ErrnoException | null>(resolve => {
     child.once('error', err => resolve(err as NodeJS.ErrnoException));
@@ -120,7 +120,7 @@ test('the installed heartbeat accepts the exact arm line flags and stops again',
     for (let i = 0; i < 30 && !seen; i++) { if (new RegExp(label).test(list())) seen = true; else execFileSync('sleep', ['0.1']); }
     assert.ok(seen, 'the armed heartbeat is listed');
   } finally {
-    try { execFileSync('heartbeat', ['--stop', label], { timeout: 10_000 }); } catch { /* already gone */ }
+    try { execFileSync('sno', ['heartbeat', '--stop', label], { timeout: 10_000 }); } catch { /* already gone */ }
     try { if (child.pid) process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ }
   }
   for (let i = 0; i < 20 && new RegExp(label).test(list()); i++) execFileSync('sleep', ['0.1']);

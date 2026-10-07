@@ -1,6 +1,6 @@
 ---
 name: agentic-time-estimate
-description: "Answer how long agent work will take, how much longer active work needs, or what clock time applies. Estimate full AI-agent wall time, measure active progress first, and get owner-facing times from `report-time`. Never estimate human-developer time."
+description: "Answer how long agent work will take, how much longer active work needs, or what clock time applies. Estimate full AI-agent wall time, measure active progress first, and get owner-facing times from `sno report-time`. Never estimate human-developer time."
 requires:
   programs:
     - {name: report-time, min_version: "1.0"}
@@ -14,23 +14,23 @@ requires:
 
 Before running the scripts below, set `AGENTIC_TIME_ESTIMATE_SKILL_DIR` to the absolute path of this skill's directory (the folder that holds this `SKILL.md`) in the same shell command.
 
-**Prerequisites.** Linux with procps `ps` (with the `etimes` column) and `pgrep`, plus the `report-time` command from Sno Station; `report-time --pid` also needs `/proc` and GNU `date`. `time-left` stops with one clear message when they are missing.
+**Prerequisites.** Linux with procps `ps` (with the `etimes` column) and `pgrep`, plus the `sno report-time` command from Sno Station; `sno report-time --pid` also needs `/proc` and GNU `date`. `time-left` stops with one clear message when they are missing.
 
 "Owner" below means whoever owns the work and reads the answer, usually the user. A "journey" is one piece of delegated work from request to close. A "route card" is the record that dispatched it, and the "routing ledger" is a project file with one row per journey (the `pl` skill writes both when it is installed); every rule below that mentions them applies only when the project keeps them, and is skipped otherwise. A ledger's `closed` event and its fields (`anchor_key`, `actual_body_h`, `actual_process_h`, `calibration_note`) are defined by the `pl` skill; without a ledger, still emit `anchor_key` in the estimate, so a later close can copy it.
 
 Three questions live here. **What clock time to write for the owner** is the
-`report-time` command, immediately below. **How much longer** for work already running is
+`sno report-time` command, immediately below. **How much longer** for work already running is
 the in-flight section after it — measured facts first, judgment last. **How long** a fresh
 piece of work will take is the estimator, everything from Step 1 down. All three are
 answered from a script or a table before they are ever answered by thinking about it.
 
-## Clock times for the owner — the `report-time` command
+## Clock times for the owner — the `sno report-time` command
 
-Sno Station provides `report-time`; `sno setup` installs it on PATH.
+Sno Station provides `sno report-time`; `sno setup` installs it.
 
 **Never write a clock time for the user that the command did not produce.**
 
-    report-time
+    sno report-time
 
 Output is always a pair, local time with its zone then UTC, and it is the only accepted form (the zone shown is the machine's own; `CET` here is only an example):
 
@@ -48,11 +48,11 @@ exists for exactly one reader.
 
 ### The five forms
 
-    report-time                          now
-    report-time --in 3600                3600 seconds from now
-    report-time --pid 2750721            when that `timeout` wrapper fires and the job stops
-    report-time "<UTC timestamp>"       that instant, read as UTC
-    report-time @<epoch>                  that epoch
+    sno report-time                          now
+    sno report-time --in 3600                3600 seconds from now
+    sno report-time --pid 2750721            when that `timeout` wrapper fires and the job stops
+    sno report-time "<UTC timestamp>"       that instant, read as UTC
+    sno report-time @<epoch>                  that epoch
 
 A bare time string is read as **UTC**; convert source timestamps to UTC before passing them.
 
@@ -70,7 +70,7 @@ rather than picking one of two answers.
 
 ### Why a command and not arithmetic
 
-Source timestamps may be UTC while the user reads in a different zone. `report-time`
+Source timestamps may be UTC while the user reads in a different zone. `sno report-time`
 uses the machine's local zone, including its `TZ` setting, unless
 `REPORT_TIME_USER_TZ` overrides it. A wrong hour can look right, so use the command
 for every user-facing clock time. `--pid` requires Linux `/proc` and GNU `date`.
@@ -79,7 +79,7 @@ Two rules follow, and the command exists to make both automatic:
 
 - **Never copy a time out of another agent's card.** Re-derive it. A stated deadline is a
   claim like any other.
-- **Derive a deadline from the process, not from prose** — `report-time --pid <pid>` reads
+- **Derive a deadline from the process, not from prose** — `sno report-time --pid <pid>` reads
   the wall limit off the process's own command line and anchors on its start time. The
   optional guard is spelled `--expect-wall <seconds>`; any other trailing argument is refused
   rather than ignored, so a mistyped guard cannot look like a guard that ran.

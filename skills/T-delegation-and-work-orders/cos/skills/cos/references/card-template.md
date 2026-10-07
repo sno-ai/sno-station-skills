@@ -143,7 +143,7 @@ This is the same doctrine as the learning-file read hooks: the duty must ride th
 artifact the recipient necessarily reads.
 
 For a **newly opened PL**, this section must also contain the heartbeat-ring block from the
-core skill — `heartbeat --interval 10m --label pl-<name> -- sno reach ring <ADDR>`, **with
+core skill — `sno heartbeat --interval 10m --label pl-<name> -- sno reach ring <ADDR>`, **with
 this lane's strict address already substituted**. A skill amendment does not reach a session
 that booted before it, and a PL handed a role alias in a multi-lane repo goes blind to its
 own mail while appearing to have followed the rule. The PL's seat must also be registered

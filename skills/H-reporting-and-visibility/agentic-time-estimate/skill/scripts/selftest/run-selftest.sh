@@ -26,8 +26,8 @@ PY
 fake_bin="$(mktemp -d)"
 wrapper=""
 trap 'kill "$wrapper" 2>/dev/null || true; wait "$wrapper" 2>/dev/null || true; rm -rf -- "$fake_bin"' EXIT
-printf '#!/usr/bin/env bash\nprintf "09:31 CET (08:31 UTC)\\n"\n' > "$fake_bin/report-time"
-chmod +x "$fake_bin/report-time"
+printf '#!/usr/bin/env bash\n[ "$1" = report-time ] || exit 2\nprintf "09:31 CET (08:31 UTC)\\n"\n' > "$fake_bin/sno"
+chmod +x "$fake_bin/sno"
 timeout 30 sleep 30 &
 wrapper=$!
 actual="$(PATH="$fake_bin:$PATH" "$selftest_dir/../time-left" --pid "$wrapper")"

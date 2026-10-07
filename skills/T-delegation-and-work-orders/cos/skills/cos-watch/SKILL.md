@@ -63,12 +63,12 @@ loop:
 COS_ADDR=$(bash "${COS_SKILL_DIR}/scripts/cos-claim.sh" register [<seat-letter>] \
   | sed -n 's/^cos-claim: registered address=\([^ ]*\).*/\1/p')
 [[ -n "$COS_ADDR" ]] || exit 64
-heartbeat --interval <interval> --label cos-<name> -- sno reach ring "$COS_ADDR"
+sno heartbeat --interval <interval> --label cos-<name> -- sno reach ring "$COS_ADDR"
 ```
 
-`<interval>` comes from the core's table (`10m` on a night shift). `heartbeat --list` shows
+`<interval>` comes from the core's table (`10m` on a night shift). `sno heartbeat --list` shows
 whether it is still armed (yours is marked); it stops by itself after 24 hours, so re-arm
-then, and `heartbeat --stop cos-<name>` before re-arming with a new interval. The next
+then, and `sno heartbeat --stop cos-<name>` before re-arming with a new interval. The next
 wake is armed before the turn ends, every time — including the tick that found nothing.
 
 **THE RING IS A HINT. YOUR INBOX IS THE QUEUE.** Begin every tick with
@@ -89,7 +89,7 @@ the exact action it was built to abolish.
 
 | Source | Proves | Does NOT prove |
 |---|---|---|
-| **Turn lock + heartbeat-ring, read as ONE pair** — the idle-inhibitor reading `Codex is running an active turn` (it exists only for Codex on Linux with systemd; on any other setup judge liveness from the seat and `sno reach seats` instead), together with whether that lane's heartbeat-ring is armed (`heartbeat --list`) | the pair, and only the pair: **lock = a turn is executing**; **no lock + heartbeat-ring armed = healthy between ticks** (reachable, NOT working); **no lock and no heartbeat-ring = not reachable on schedule**, a compliance failure | **the lock alone anything**: a turn stuck on one command holds it too. Also: Claude-runtime agents take no lock at all |
+| **Turn lock + heartbeat-ring, read as ONE pair** — the idle-inhibitor reading `Codex is running an active turn` (it exists only for Codex on Linux with systemd; on any other setup judge liveness from the seat and `sno reach seats` instead), together with whether that lane's heartbeat-ring is armed (`sno heartbeat --list`) | the pair, and only the pair: **lock = a turn is executing**; **no lock + heartbeat-ring armed = healthy between ticks** (reachable, NOT working); **no lock and no heartbeat-ring = not reachable on schedule**, a compliance failure | **the lock alone anything**: a turn stuck on one command holds it too. Also: Claude-runtime agents take no lock at all |
 | Role from arguments — `codex exec …` vs plain `codex …` | executor versus interactive window | **which** window. A PL's window and one the owner opened are indistinguishable — say so rather than guessing |
 | Heartbeat file age | recent activity when fresh | **nothing when stale.** A PL deep in an owner conversation leaves no other disk trace |
 | Inbox and artifact movement | work is landing | quiet may mean thinking, waiting, or dead. Repo-wide, so it cannot tell two lanes apart |
@@ -100,7 +100,7 @@ agent is alive, will answer if typed into, and **cannot receive a card**. It is 
 of the multi-hour stall and it looks fine in every window screenshot. **The predicate is
 the ring outcome plus what the seat then does, never the lock** — on Codex a missing lock
 means nothing is running, so send and judge by whether the ring started a turn. A Claude
-agent takes no lock and must have its heartbeat found in `heartbeat --list` or be treated
+agent takes no lock and must have its heartbeat found in `sno heartbeat --list` or be treated
 as unreachable. An armed heartbeat is reachability evidence, never proof of progress.
 
 **Never reopen off a stale heartbeat alone.** A stale heartbeat is routine on a PL that

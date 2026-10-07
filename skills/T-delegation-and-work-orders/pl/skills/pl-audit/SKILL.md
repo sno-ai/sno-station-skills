@@ -62,7 +62,7 @@ independent work and inspect the relevant existing output before ordering a targ
    (tests, deletions, zero-callers); the journey's `closed` ledger line (written by the PL by hand) is
    complete and its outcome carries a one-line calibration note (estimate versus actual). `todo.sh close --outcome ...`
    writes a separate `board_closed` line for the board row; that line does not replace the `closed` line. Check the charter's success checks: when `deliver` is
-   installed run `deliver-proof check <charter>` and read its output (which checks it lists as
+   installed run `sno deliver-proof check <charter>` and read its output (which checks it lists as
    unproven), not only its exit status; otherwise read the charter's Proof table yourself,
    latest row per check. A success check without a passing latest row is unverified.
 3. **Independent adversarial review** of the journey's final diff
@@ -151,7 +151,7 @@ missing timing or require estimator-specific fields to close verified work. If s
 changes, revise the remaining budget from available timings and state uncertainty.
 The launcher budget describes the whole remaining task, not just implementation time.
 No new calibration run or estimation tool is required; the estimator (`agentic-time-estimate`)
-is consulted only when installed, and clock times come from `report-time` when installed,
+is consulted only when installed, and clock times come from `sno report-time` when installed,
 otherwise from `date` in the owner's zone, never from arithmetic.
 
 ## Triage-ruling reconciliation — at every close

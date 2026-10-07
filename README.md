@@ -40,7 +40,7 @@ skills/
     skill/                      one skill: SKILL.md, references/, scripts/
     skills/<member>/            or a family of skills that ship together
     overlay/claude|codex/       per-agent differences, when a skill needs them
-    public-bin/                 commands the skill puts on PATH
+    public-bin/                 one file per public `sno <file name>` subcommand the skill provides
     PUBLISHED.json              the stamp written by the publish step
 registry.yaml                   unit -> category code (and tier)
 scripts/
@@ -64,8 +64,8 @@ requires:
     - {slot: 4.shell, need: required}        # what the agent itself must be able to do
 ```
 
-- **programs** are Sno Station programs installed next to the skills: `reach`, `heartbeat`,
-  `subscription-quota-check`, `report-time`.
+- **programs** are Sno Station programs installed next to the skills and run as `sno <name>`:
+  `reach`, `heartbeat`, `subscription-quota-check`, `report-time`.
 - **slots** name an agent ability: `4.shell` (run shell commands), `4.file-read-write` (read and
   write files), `4.background-processes` (run a command in the background),
   `2.pre-turn-context-injection` (add text to the agent's context before each turn) and

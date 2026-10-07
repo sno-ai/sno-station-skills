@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # gpu-watch.sh — one GPU-liveness sample per heartbeat tick.
-# heartbeat --interval 4m --label gpu-<journey> -- bash "${PL_SKILL_DIR}/scripts/gpu-watch.sh" --journey <id> --tick-secs 240
+# sno heartbeat --interval 4m --label gpu-<journey> -- bash "${PL_SKILL_DIR}/scripts/gpu-watch.sh" --journey <id> --tick-secs 240
 # Needs nvidia-smi and jq.
 # The heartbeat interval must equal --tick-secs; delete the printed state file when the phase closes.
 # Exit: 0 healthy/window elapsed; 3 active then stalled; 4 never active; 2 usage/probe error.

@@ -6,14 +6,20 @@ const path = require('node:path');
 
 if (process.env.EXEC_LOG) fs.appendFileSync(process.env.EXEC_LOG, 'sno\n');
 const argv = process.argv.slice(2);
-// `sno observe append`: validates nothing; records the exact argv line for the observe journey.
+// `sno observe append`: validates nothing; records the argv line after `observe` for the observe journey,
+// and exits 2 for the event type named in REM_OBSERVE_FAIL (else 0).
 if (argv[0] === 'observe' && argv[1] === 'append') {
-  if (process.env.REM_OBSERVE_CAPTURE) fs.appendFileSync(process.env.REM_OBSERVE_CAPTURE, `${argv.join(' ')}\n`);
-  process.exit(0);
+  if (process.env.REM_OBSERVE_CAPTURE) fs.appendFileSync(process.env.REM_OBSERVE_CAPTURE, `${argv.slice(1).join(' ')}\n`);
+  process.exit(argv[2] === process.env.REM_OBSERVE_FAIL ? 2 : 0);
 }
 // `sno rem verdict <judgment-id> <verdict>`: the acknowledgment flushCloudVerdicts checks.
 if (argv[0] === 'rem' && argv[1] === 'verdict' && argv.length === 4) {
   process.stdout.write(`${JSON.stringify({ schema_version: 1, judgment_id: argv[2], verdict: argv[3], acknowledged: true })}\n`);
+  process.exit(0);
+}
+// `sno heartbeat --list`: prints the armed rem-reflect line so `status` sees the daily job as armed.
+if (argv[0] === 'heartbeat' && argv.includes('--list')) {
+  process.stdout.write('rem-reflect 1440m -- sno rem-reflect run\n');
   process.exit(0);
 }
 const command = argv.join(' ');

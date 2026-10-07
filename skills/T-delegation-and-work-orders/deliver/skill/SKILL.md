@@ -15,10 +15,10 @@ is. Read the whole charter and the existing work first. The owner (whoever owns 
 often the user) can override this skill and any plan an agent wrote. Any kind of project uses
 it: for code and tests also read `references/proof.md`.
 
-Prerequisites: `deliver-proof` needs bash 4+ and GNU coreutils (Linux) and prints one message
+Prerequisites: `sno deliver-proof` needs bash 4+ and GNU coreutils (Linux) and prints one message
 and stops when they are missing; its selftest also needs python3. On macOS, install bash 4+ and
-GNU coreutils (for example with Homebrew) and put them first on PATH. If `deliver-proof` is not
-on PATH, run `scripts/deliver-proof` from this skill's folder instead.
+GNU coreutils (for example with Homebrew) and put them first on PATH. If `sno deliver-proof` is not
+available, run `scripts/deliver-proof` from this skill's folder instead.
 
 ## Keep the work useful
 
@@ -42,7 +42,7 @@ on PATH, run `scripts/deliver-proof` from this skill's folder instead.
 1. **Start.** If the charter is missing, is not `released`, or has a success check nobody could
    observe, say so once and have `charter` revise it with the owner. Never invent a decision.
    If `<charter-name>.state.md` sits beside the charter, an earlier executor stopped partway:
-   run `handoff-checkpoint --verify` on it (the `handoff` skill ships the command), read its Done
+   run `sno handoff-checkpoint --verify` on it (the `handoff` skill ships the command), read its Done
    and Next lists, treat Done as finished, and continue from Next instead of starting over.
 2. **Plan, only as much as needed.** Work with dependent steps gets a `## Plan` in the charter:
    the steps in order and who does each. One or two steps need none. A plan of more than three
@@ -53,13 +53,13 @@ on PATH, run `scripts/deliver-proof` from this skill's folder instead.
    skills when installed; for documents, its writing and review tools. Build the smallest real
    integration early when later steps depend on it. Keep existing behavior unless the charter
    says otherwise. Reproduce a defect before fixing it.
-   After every finished step run `handoff-checkpoint <charter-name>.state.md` (beside the
+   After every finished step run `sno handoff-checkpoint <charter-name>.state.md` (beside the
    charter) and update its Done and Next lists, so another agent can take over at any moment.
    If the command is not installed, skip the record and keep working.
 4. **Prove.** For each success check, record one of:
-   - `deliver-proof run <charter> <n> -- <command>`: the real command, run in the current
+   - `sno deliver-proof run <charter> <n> -- <command>`: the real command, run in the current
      directory; its output and exit status are kept as the log and the table row.
-   - `deliver-proof see <charter> <n> <evidence-file> "<what was observed>"`: when inspection is
+   - `sno deliver-proof see <charter> <n> <evidence-file> "<what was observed>"`: when inspection is
      the proof (a produced document, a message at its receiver, a screen). The evidence file is
      a nonempty file, named relative to the current directory.
 
@@ -71,7 +71,7 @@ on PATH, run `scripts/deliver-proof` from this skill's folder instead.
 5. **Review once.** One independent review of what changed (`peer-review` when installed,
    otherwise a second agent given the charter and the changed work). Fix ordinary-path defects
    in scope; report the rest without growing the job.
-6. **Close.** Run `deliver-proof check <charter>` and read its output. Only when it exits 0,
+6. **Close.** Run `sno deliver-proof check <charter>` and read its output. Only when it exits 0,
    write `## Report` (what worked, which checks ran and how, anything unfinished) and set
    `status: delivered`. A failing record step is logged and repaired on its own; it does not
    undo working results. Tell whoever dispatched you the result and what remains.

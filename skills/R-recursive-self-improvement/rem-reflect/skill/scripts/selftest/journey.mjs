@@ -58,7 +58,7 @@ if (!process.env.REM_SELFTEST) process.env.PATH = `${BIN}:${process.env.PATH}`;
 process.env.REM_SHIM_MTIME = String(SELF_MT);
 process.env.REM_SNO_CAPTURE = join(home, 'cloud-requests.jsonl');
 mkdirSync(join(home, '.sno'), { recursive: true });
-writeFileSync(join(home, '.sno', 'settings.json'), stationSettings());
+writeFileSync(join(home, '.sno', 'settings.json'), stationSettings('rem-enhanced'));
 const backend = () => {
   const live = new RealBackend(30_000, { loopHomeBase: join(store, '.loop-home') });
   if (process.env.REM_DROP_SPAWN_ENV === '1') live.spawnEnv = () => undefined;

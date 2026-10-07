@@ -1,6 +1,6 @@
 ---
 name: subscription-quota-check
-description: "Read remaining Claude Code and Codex subscription quota without spending it. Use when the user asks or after a vendor rejects work for quota; a caller such as rotate-agent may also arm a scheduled read on purpose. Never poll on your own; after a `wait` verdict, pass the reset wait to `heartbeat` and re-read once when it ends."
+description: "Read remaining Claude Code and Codex subscription quota without spending it. Use when the user asks or after a vendor rejects work for quota; a caller such as rotate-agent may also arm a scheduled read on purpose. Never poll on your own; after a `wait` verdict, pass the reset wait to `sno heartbeat` and re-read once when it ends."
 requires:
   programs:
     - {name: subscription-quota-check, min_version: "1.0"}
@@ -30,22 +30,22 @@ not say when it comes back. This reads the same state for free and tells you the
 
 ## Running it
 
-Use the command installed by `sno setup`, with the installed `heartbeat`
+Use the command installed by `sno setup`, with the installed `sno heartbeat`
 command for the wait branch. If a command names a missing prerequisite, install that
 tool and retry. On macOS use `bash`, `jq`, and `coreutils` for the named shell/JSON/GNU
 tools; put `coreutils/libexec/gnubin` on PATH. Windows requires WSL. Only the wait
-branch needs `heartbeat`, a proven background process and a reader-to-agent delivery path;
+branch needs `sno heartbeat`, a proven background process and a reader-to-agent delivery path;
 if either capability is unsupported or unverified, skip the wait branch and name the missing
 capability. The read itself needs none of them.
 
 [The bundled command contract](references/subscription-quota-check-contract.json) pins
 the public syntax and verdicts checked by this skill's offline self-test. Use
-`subscription-quota-check --help` for the installed program.
+`sno subscription-quota-check --help` for the installed program.
 The wait example is checked against its own bundled
 [heartbeat contract](references/heartbeat-contract.json).
 
 ```
-subscription-quota-check [--vendor codex|claude|both] [--json|--human] [--quiet]
+sno subscription-quota-check [--vendor codex|claude|both] [--json|--human] [--quiet]
 ```
 
 `--vendor` defaults to `both`. `--human` is the default on a terminal, `--json` everywhere
@@ -84,15 +84,15 @@ In the JSON envelope each vendor is one entry of `vendors[]`, with `verdict` and
 ## When it says wait
 
 Take `seconds_to_reset` from the **blocking** window. Set `delay_seconds` to that value
-plus five seconds, then arm `heartbeat` using its background-and-reader procedure with:
+plus five seconds, then arm `sno heartbeat` using its background-and-reader procedure with:
 
 ```sh
-heartbeat --label quota-reset --interval "${delay_seconds}s" --max-ticks 2 --max-hours 0 -- date -u
+sno heartbeat --label quota-reset --interval "${delay_seconds}s" --max-ticks 2 --max-hours 0 -- date -u
 ```
 
 The first tick runs immediately; it is only an arming observation. Do not query quota
 on that tick. The second tick arrives after the delay and ends this bounded watch.
-On that second tick, run `subscription-quota-check` once and inspect its fresh verdict.
+On that second tick, run `sno subscription-quota-check` once and inspect its fresh verdict.
 In this wait, never put the quota command in a recurring hook. `--max-ticks 1` would finish immediately
 and would not wait for the reset. The watch ending is not proof that quota has reset.
 If the fresh verdict is still `wait`, create a new bounded watch from its new blocking

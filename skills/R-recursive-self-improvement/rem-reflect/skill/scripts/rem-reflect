@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-# rem-reflect launcher. The implementation is the TypeScript beside this script in the skill payload.
-# Run from the repo or the deployed skill payload, rem-reflect.ts sits next to this file; published to
-# ~/.local/bin, this file is alone, so fall back to the deployed skill roots where the payload lives.
+# sno rem-reflect launcher. The implementation is the TypeScript beside this script in the skill payload.
+# Run from the repo or the deployed skill payload, rem-reflect.ts sits next to this file; when this file is
+# alone, fall back to the deployed skill roots where the payload lives.
 DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 for cand in \
   "$DIR/rem-reflect.ts" \

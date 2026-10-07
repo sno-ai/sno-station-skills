@@ -51,11 +51,11 @@ never improvise shell:
 # that would silently hand one lane another lane's seat; the resolver refuses rather than guesses.
 PL_ADDR=$(bash "${PL_SKILL_DIR}/scripts/lane-resolve.sh" --repo "$PWD" --field addr) || exit 64
 label="pl-${PL_ADDR#pl.}"; label="${label%@*}"
-if heartbeat --list | awk -v l="$label" '$3==l{f=1} END{exit !f}'; then
+if sno heartbeat --list | awk -v l="$label" '$3==l{f=1} END{exit !f}'; then
   echo "heartbeat already armed for $label" >&2
   exit 64
 fi
-heartbeat --interval 10m --label "$label" -- sno reach ring "$PL_ADDR"
+sno heartbeat --interval 10m --label "$label" -- sno reach ring "$PL_ADDR"
 ```
 The heartbeat hook rings your own seat; the ring starts your next turn, and no listener or reader
 is needed. Nothing here blocks: you arm it and end the turn.
@@ -97,13 +97,13 @@ adversarial probe, running a close-audit, writing an owner report — sits unsee
 until the PL resurfaces UNLESS the heartbeat is already live. The rule is not "arm when you go idle,"
 it is "a heartbeat is live whenever a card could land" — the same heartbeat keeps ringing across
 long tasks, so after every ring you handle the cards and end the turn again; re-arm only when
-`heartbeat --list` shows it gone (a heartbeat ends after its maximum hours). A
+`sno heartbeat --list` shows it gone (a heartbeat ends after its maximum hours). A
 **headed executor (one the owner opened in their own terminal, not one the PL spawned) has NO `spawn-exec` ack/no-ack alarm** (that
 alarm exists only for PL-spawned tmux sessions): the heartbeat — or a manual inbox
 read — is the ONLY thing that catches its Blocker cards, so treat any headed session
 as extra-vigilance and never promise to "catch its card" without a live heartbeat
 behind the promise. Two more hygiene clauses: a heartbeat is yours to stop
-(`heartbeat --stop <label>`) when its journey or shift ends, so it does not ring for nothing; and
+(`sno heartbeat --stop <label>`) when its journey or shift ends, so it does not ring for nothing; and
 another seat's heartbeat is left alone — killing
 someone else's machinery is whack-a-mole you lose.
 
@@ -416,7 +416,7 @@ a stall or a wrong turn. Two habits:
    --format=csv,noheader` costs nothing — read it whenever you wake during a
    GPU-phase journey and put the reading on the status board.
 2. **Arm the bounded probe when a GPU phase starts**:
-   `heartbeat --interval 4m --label gpu-<id> -- bash "${PL_SKILL_DIR}/scripts/gpu-watch.sh" --journey <id> --tick-secs 240`
+   `sno heartbeat --interval 4m --label gpu-<id> -- bash "${PL_SKILL_DIR}/scripts/gpu-watch.sh" --journey <id> --tick-secs 240`
    (arm-at-most-one per journey). Each tick samples once; the interval must equal
    --tick-secs. Read its exit: STALL (active then silent ≥20 min) or
    NEVER-STARTED (nothing within the 45-min grace) → read the executor

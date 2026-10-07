@@ -14,10 +14,10 @@ export function observe(eventType: string, fields: Record<string, string | numbe
   logPath: string = join(storePath(), reflectionFiles.runLog)): void {
   try {
     const agent = process.env.CLAUDECODE !== undefined ? 'claude-code' : 'codex';
-    execFileSync('sno-observe', ['append', eventType, `--agent=${agent}`,
+    execFileSync('sno', ['observe', 'append', eventType, `--agent=${agent}`,
       ...Object.entries(fields).map(([key, value]) => `--${key}=${value}`)], { stdio: 'ignore' });
   } catch (error) {
-    const reason = isObject(error) && error.code === 'ENOENT' ? 'sno-observe: not found' : String(error);
+    const reason = isObject(error) && error.code === 'ENOENT' ? 'sno: not found' : String(error);
     try {
       mkdirSync(dirname(logPath), { recursive: true });
       appendFileSync(logPath, `${eventType}: ${reason.replace(/[\r\n]+/g, ' ')}\n`);

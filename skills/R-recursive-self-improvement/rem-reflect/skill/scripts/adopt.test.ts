@@ -37,7 +37,7 @@ test('running with no arguments prints the usage and exits 0; an unknown command
   const harness = commandHarness(makeStore(fixtureConfig()));
   const bare = harness.run([]);
   assert.equal(bare.status, 0, bare.stderr);
-  assert.match(bare.stdout, /Usage: rem-reflect/);
+  assert.match(bare.stdout, /Usage: sno rem-reflect/);
   assert.equal(harness.run(['nonsense']).status, 2);
 });
 

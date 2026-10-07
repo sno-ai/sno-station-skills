@@ -55,7 +55,7 @@ effect of handoff. Secrets and raw credentials do not belong in the brief.
    untracked-file content hashes and the current checkout. Write one complete handoff file
    outside the repository: objective, progress, authorization, settled decisions, exclusions,
    important files/evidence, acceptance checks, unfinished work and risks. Run
-   `handoff-checkpoint <file>` to write the git and file-state part of it; it also creates
+   `sno handoff-checkpoint <file>` to write the git and file-state part of it; it also creates
    the sections you fill in by hand (see "Progress record" below). For card-backed
    work include A's original card identity, X-Work and R. Reserve a fresh Message-ID for
    B's transfer card and include it in the brief before measuring the brief. For direct work state that no
@@ -111,6 +111,11 @@ effect of handoff. Secrets and raw credentials do not belong in the brief.
    line follows: A calls B with `PAUSE HANDOFF RECOVERY: stop, emit HANDOFF_PAUSED` and
    `--expect HANDOFF_PAUSED`, rewrites the brief with the checkout as B left it, and repeats
    steps 3 and 6 against the new digest.
+   On that early change, run `timeout 60 sno observe append handoff.pause --agent=<sender harness> --project=<checkout> --reason=early_write`
+   once, using `claude-code` or `codex` and the absolute checkout path; suppress the command's output,
+   write `sno: not found; handoff.pause event not recorded` to stderr if `sno` is absent,
+   or `sno observe append handoff.pause failed (exit N); event not recorded` on nonzero exit,
+   and continue recovery without retrying.
    This direct release creates no additional actionable work card. If receipt is uncertain,
    A remains paused and inspects B's new output with `sno reach watch <B> --timeout 300`;
    A never resumes competing edits. Do not release an unverified brief.
@@ -133,7 +138,7 @@ effect of handoff. Secrets and raw credentials do not belong in the brief.
 
 ## Progress record
 
-`handoff-checkpoint <file>` writes a progress record and refreshes it in place. Keep the file outside
+`sno handoff-checkpoint <file>` writes a progress record and refreshes it in place. Keep the file outside
 the checkout. It holds, between two marker lines, what git and the file system can state: the checkout,
 branch, HEAD and subject, the last five commits, and every uncommitted path with its SHA-256. Below the
 markers are five sections for the agent: Objective and authorization, Done, Next, Decisions and
@@ -143,7 +148,7 @@ Run it after every finished task and then update Done and Next. An agent that do
 replaced at any moment, including by a receiver that never meets it. Prerequisites: bash 4+, GNU
 coreutils and git; on macOS install `bash` and `coreutils` from Homebrew and put them first on PATH.
 
-`handoff-checkpoint --verify <file>` compares the record with the checkout it names. It prints `MATCH`
+`sno handoff-checkpoint --verify <file>` compares the record with the checkout it names. It prints `MATCH`
 (exit 0), or one `DRIFT` line per difference (exit 1): `head moved`, `branch`, `new:`, `changed:`,
 `settled:` or `gone:` with the path. Exit 2 with one line means the file is not a usable record. `MATCH` means
 the same branch, the same HEAD commit and the same content in every uncommitted file of the working tree; it
@@ -154,14 +159,14 @@ does not compare what is staged, and it checks the checkout the record names, no
 The receiver B works from the progress record alone. Steps 3 to 7 above do not apply: there is no A to
 verify with, release, or unregister.
 
-- Run `rotate-agent-resume` (see the `rotate-agent` skill) to start B on a tmux window, or, when B is
+- Run `sno rotate-agent-resume` (see the `rotate-agent` skill) to start B on a tmux window, or, when B is
   already running, do the following by hand.
-- Run `handoff-checkpoint --verify <record>`. `MATCH` means the checkout is exactly as A left it at its
+- Run `sno handoff-checkpoint --verify <record>`. `MATCH` means the checkout is exactly as A left it at its
   last checkpoint. `DRIFT` means A kept working after that checkpoint: read the named commits and files
   (`git log`, `git diff`), decide what they finished, and add it to Done before continuing.
 - Read the whole record. Done is finished: do not redo it. Next is the task list. Objective and
   authorization is all the authority B has; a step outside it needs the owner.
-- Continue in the same checkout. After every finished task run `handoff-checkpoint <record>` and update
+- Continue in the same checkout. After every finished task run `sno handoff-checkpoint <record>` and update
   Done and Next, so B can be replaced the same way.
 - Report to the owner's session named in the record. If there is none, report in the session that
   started B, and say that the receiver started without a release from the sender.

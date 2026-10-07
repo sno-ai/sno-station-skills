@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { testTempRoot } from './test-helpers.ts';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Only off and metadata-only consent prohibit network; full consent uploads through sno rem judge.
+// These runs use test-helpers.ts's sno substitute. They prove the reflection process delegates
+// sending without directly opening outbound sockets, not the real sno CLI's consent enforcement.
 
 const SCRIPTS = dirname(fileURLToPath(import.meta.url));
 
@@ -19,16 +20,13 @@ function outboundConnects(straceLogPath: string): string[] {
     .filter(line => !/inet_addr\("127\./.test(line) && !/inet_pton\(AF_INET6, "::1"/.test(line) && !/sin6_addr=.*"::1"/.test(line));
 }
 
-test('off and metadata-only ordinary runs open zero outbound sockets, and the trace instrument can see one', t => {
+test('the reflection process delegates sends to sno without direct outbound sockets, and the trace instrument can see one', t => {
   if (process.platform !== 'linux' || spawnSync('strace', ['--version']).error) {
     t.skip('strace is unavailable; socket tracing requires Linux and strace');
     return;
   }
-  const dir = mkdtempSync(join(tmpdir(), 'remtest-net-'));
+  const dir = mkdtempSync(join(testTempRoot, 'remtest-net-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const consentCli = join(dir, 'sno');
-  writeFileSync(consentCli, '#!/bin/sh\nif [ "$*" = "station telemetry consent get" ]; then echo "$REM_TEST_CONSENT"; else exit 2; fi\n');
-  chmodSync(consentCli, 0o755);
   const driver = join(dir, 'driver.ts');
   const H = JSON.stringify(join(SCRIPTS, 'test-helpers.ts'));
   const R = JSON.stringify(join(SCRIPTS, 'rem-reflect.ts'));
@@ -49,19 +47,21 @@ test('off and metadata-only ordinary runs open zero outbound sockets, and the tr
     `const traces = existingTraces(store);`,
     `if (traces.length !== 2) { console.error('expected 2 harvested traces, got ' + traces.length); process.exit(4); }`,
     `const report = readFileSync(join(store,'staging','20260908-0000','REPORT.md'),'utf8');`,
-    `if (!report.includes('Kept: 2') || !report.includes('Uploaded: 0') || !report.includes('No-upload: consent ' + process.env.REM_TEST_CONSENT)) { console.error(report); process.exit(5); }`,
-    `if (existsSync(join(store,'staging','20260908-0000','cloud-request.json'))) process.exit(6);`,
-    `console.log('journey ok');`,
+    `if (!report.includes('Kept: 2') || !report.includes('Local session outcomes:') || report.includes('send failed')) { console.error(report); process.exit(5); }`,
+    `if (!existsSync(join(store,'staging','20260908-0000','cloud-request.json'))) process.exit(6);`,
+    `const log = readFileSync(join(store,'staging','20260908-0000','run.log'),'utf8');`,
+    `if (!log.includes('cloud run 20260908-0000 send failed:') || !log.includes('upload rejected: consent ' + process.env.REM_TEST_CONSENT)) process.exit(7);`,
+    `console.log('delegated-send journey ok');`,
   ].join('\n'));
 
   for (const consent of ['off', 'metadata-only']) {
     const runLog = join(dir, `strace-run-${consent}.log`);
     const out = execFileSync('strace', ['-f', '-e', 'trace=connect', '-o', runLog,
       process.execPath, '--experimental-strip-types', driver], {
-      encoding: 'utf8', env: { ...process.env, PATH: `${dir}:${process.env.PATH ?? ''}`, REM_TEST_CONSENT: consent },
+      encoding: 'utf8', env: { ...process.env, REM_TEST_CONSENT: consent },
     });
-    assert.match(out, /journey ok/, `${consent} completed harvest and conservative local judgment`);
-    assert.deepEqual(outboundConnects(runLog), [], `${consent} opened no outbound socket`);
+    assert.match(out, /delegated-send journey ok/, `the reflection completed with the sno substitute rejecting consent ${consent}`);
+    assert.deepEqual(outboundConnects(runLog), [], `the reflection and sno substitute opened no outbound socket with fixture consent ${consent}`);
   }
 
   // Positive control: the same parser flags a real outbound connect, so the empty result above is a

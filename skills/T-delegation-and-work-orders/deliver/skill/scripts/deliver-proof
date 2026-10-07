@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: deliver-proof run CHARTER N -- COMMAND... | see CHARTER N FILE TEXT | check CHARTER.
+# Usage: sno deliver-proof run CHARTER N -- COMMAND... | see CHARTER N FILE TEXT | check CHARTER.
 # Needs bash 4+ and GNU coreutils (Linux). The charter basename drops a final .md.
 # A command runs in the current directory. A `see` evidence path is read from the current
 # directory and recorded relative to the charter's directory.
@@ -17,7 +17,7 @@ fi
 
 usage() {
     local status="${1:-2}"
-    printf 'usage: deliver-proof run CHARTER N -- COMMAND... | see CHARTER N FILE TEXT | check CHARTER\n' >&"$((status == 0 ? 1 : 2))"
+    printf 'usage: sno deliver-proof run CHARTER N -- COMMAND... | see CHARTER N FILE TEXT | check CHARTER\n' >&"$((status == 0 ? 1 : 2))"
     exit "$status"
 }
 

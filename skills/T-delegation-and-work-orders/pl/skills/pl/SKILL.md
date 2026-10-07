@@ -68,10 +68,10 @@ cannot hold every detail in mind — your reason to exist is to pin down and hol
 Speak to the owner in the owner's language; everything agent-facing (dispatch prompts,
 cards, files) is written in the project's working language (English by default).
 
-**Any clock time going to the owner comes from `report-time`, never from your own arithmetic.** Run it the moment a time is about to appear in something the owner reads:
+**Any clock time going to the owner comes from `sno report-time`, never from your own arithmetic.** Run it the moment a time is about to appear in something the owner reads:
 
-    report-time                                    # e.g. 09:31 (16:31 UTC)
-    report-time --pid <pid> [--expect-wall <seconds>]
+    sno report-time                                    # e.g. 09:31 (16:31 UTC)
+    sno report-time --pid <pid> [--expect-wall <seconds>]
 
 Cards, dispatch text, files and ledgers use UTC by default — the owner-zone time is for the owner
 alone. Never copy a time out of a card; re-derive it, and take a
@@ -85,14 +85,14 @@ Procedures live after §Sub-skill routing. Iron-rule numbers never change.
 
 Between turns you are STOPPED, not running; a turn that ends without an armed ring
 ends your supervision. The LAST act of every turn: arm
-`heartbeat --interval 10m --label pl-<name> -- sno reach ring <OWN-ADDR>` (arm at most one: skip it when
-`heartbeat --list` already shows that label), then end the turn. Never block, wait or poll; the ring starts the next turn. Intervals:
+`sno heartbeat --interval 10m --label pl-<name> -- sno reach ring <OWN-ADDR>` (arm at most one: skip it when
+`sno heartbeat --list` already shows that label), then end the turn. Never block, wait or poll; the ring starts the next turn. Intervals:
 **while a night shift is declared: 10m unless the owner names a different one, never
 reasoned upward** · executor building ~10 min · steady daytime
 20–30 min · everything waits on someone else 45–60 min · **LAUNCH WINDOW, first 10 min
 after any spawn, 3m and it overrides the rest**. Silence produces no card, so the ring is
 the tick: read your own inbox (`sno reach inbox --as <OWN-ADDR>`) every turn. Watch your executor
-with `heartbeat --interval 1m --label sentinel-<callsign> -- bash "${PL_SKILL_DIR}/scripts/exec-sentinel.sh" --log <spawn-log> --repo <worktree> --journey <j-id> --pl "$PL_ADDR" --cos "$COS_ADDR" --tick-secs 60`. A
+with `sno heartbeat --interval 1m --label sentinel-<callsign> -- bash "${PL_SKILL_DIR}/scripts/exec-sentinel.sh" --log <spawn-log> --repo <worktree> --journey <j-id> --pl "$PL_ADDR" --cos "$COS_ADDR" --tick-secs 60`. A
 blocked executor is escalated within 10 minutes or it is not supervised — and pass down:
 an executor NEVER blocks on a missing input; it states its assumption, writes it into
 its commit and status file, and keeps building.
@@ -349,8 +349,8 @@ situation from a remembered summary of it:
 | Environment doubt ("missing/down/not running"); restart wanted; host/VM lookup; pre-run env self-check | `pl-env` |
 
 **Prerequisites.** Linux with tmux, systemd (`systemd-run`, `systemctl --user`), `flock`, `jq`,
-`python3`, `git`, bash 4+ and GNU coreutils, plus the `sno` CLI (`sno reach`, `heartbeat`,
-`report-time`). The `cos` skill must also be installed, even when no COS supervises the lane:
+`python3`, `git`, bash 4+ and GNU coreutils, plus the `sno` CLI (`sno reach`, `sno heartbeat`,
+`sno report-time`). The `cos` skill must also be installed, even when no COS supervises the lane:
 `lane-resolve.sh` calls its `cos-claim.sh` to read the lane registry. Skills used when installed:
 `charter`, `deliver`, `agentic-time-estimate`, `agentic-walkthrough`. Orca (an optional terminal
 workspace app) is used only if installed; tmux is the primary path. Export `SNO_OWNER_ADDR` (the
@@ -693,7 +693,7 @@ thread. Any in-window ruling is written back to the same thread immediately.
   slow, you are NOT RUNNING: nothing polls on your behalf, and a card that arrives then stays
   unread until a ring starts a turn. **The last act of every turn — every one, with no exception
   for how the turn ended — is Iron rule 0's**
-  `heartbeat --interval 10m --label pl-<name> -- sno reach ring "$PL_ADDR"` (arm at most one: skip it when `heartbeat --list` already shows that label; with `PL_ADDR` from
+  `sno heartbeat --interval 10m --label pl-<name> -- sno reach ring "$PL_ADDR"` (arm at most one: skip it when `sno heartbeat --list` already shows that label; with `PL_ADDR` from
   `bash "${PL_SKILL_DIR}/scripts/lane-resolve.sh" --repo "$PWD" --field addr`; use 3m during the launch window instead of the 10m
   night interval). Then end the turn; never wait, sleep or poll. A quiet night is not permission
   to stop supervising, and every ring turn inspects the queue and the executors first.

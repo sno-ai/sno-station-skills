@@ -16,7 +16,7 @@ rules = {
     "summary line": "MEDIC ok=N warn=N fail=N",
     "checks only": "it never installs, repairs, starts, stops or spends anything",
     "fix only on request": "Run a fix only when the owner asks for it",
-    "re-run after a fix": "run `medic run` again",
+    "re-run after a fix": "run `sno medic run` again",
     "skipped checks are shown": "not checked, <program> is missing",
     "points to the live receiver test": "`rotate-agent-preflight`",
 }

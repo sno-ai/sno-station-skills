@@ -23,7 +23,7 @@ rules = {
     "no claim of real problems": 'do not say the findings are "real problems"',
     "zero is not reported when nothing was judged": "do not report a zero",
     "ruling is the owner's": "this command never rules on anything",
-    "brief is the page for the user": "run `catch-report brief --since 7d`",
+    "brief is the page for the user": "run `sno catch-report brief --since 7d`",
     "page goes out as printed": "Hand the page to the user as printed, headline first, in English: do not translate it or re-word it.",
     "no added claims": "do not add a claim the page",
 }

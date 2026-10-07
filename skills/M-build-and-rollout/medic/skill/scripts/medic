@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# medic — one command that says, in plain lines, whether this machine's agent team can work. It
+# sno medic — one command that says, in plain lines, whether this machine's agent team can work. It
 # only checks; it never repairs, starts, stops or spends anything. One line per check:
 #   OK <check>: <what>            WARN|FAIL <check>: <what> -> <fix>
 # and a last line `MEDIC ok=N warn=N fail=N`. FAIL means the team cannot work (a required program is
@@ -11,7 +11,7 @@ set -Eeuo pipefail
 usage() {
   local status="${1:-2}"
   cat >&"$((status == 0 ? 1 : 2))" <<'USAGE'
-usage: medic run [--min-free-mb N]
+usage: sno medic run [--min-free-mb N]
 checks the agent team on this machine and repairs nothing. One line per check:
   OK <check>: <what>   |   WARN|FAIL <check>: <what> -> <fix>
 then: MEDIC ok=N warn=N fail=N   (exit 0 without FAIL, 1 with FAIL)
@@ -37,13 +37,16 @@ done
 
 readonly CORE_SKILLS=(reach heartbeat join-talk handoff deliver charter)
 readonly PUBLIC_COMMANDS=(deliver-proof handoff-checkpoint rotate-agent-resume rem-reflect)
-readonly REQUIRED_TOOLS=(sno jq tmux git heartbeat subscription-quota-check)
+readonly REQUIRED_TOOLS=(sno jq tmux git)
+readonly REQUIRED_SNO_COMMANDS=(heartbeat subscription-quota-check)
 
 OKS=0 WARNS=0 FAILS=0
 ok() { OKS=$((OKS + 1)); printf 'OK %s: %s\n' "$1" "$2"; }
 warn() { WARNS=$((WARNS + 1)); printf 'WARN %s: %s -> %s\n' "$1" "$2" "$3"; }
 fail() { FAILS=$((FAILS + 1)); printf 'FAIL %s: %s -> %s\n' "$1" "$2" "$3"; }
 have() { command -v "$1" >/dev/null 2>&1; }
+# runs <name>: `sno <name> --help` answers, so the sno command is runnable.
+runs() { timeout 10 sno "$1" --help >/dev/null 2>&1; }
 join() { local out="" item; for item; do out+="${out:+, }$item"; done; printf '%s' "$out"; }
 # lacking <program>...: the programs among them that are not on PATH, as "a, b"; empty when all are there.
 lacking() { local gone=() p; for p; do have "$p" || gone+=("$p"); done; (( ${#gone[@]} == 0 )) || join "${gone[@]}"; }
@@ -52,10 +55,11 @@ skip() { warn "$1" "not checked, $2 is missing" "install $2 (see the tools line)
 # 1. Programs the team runs on.
 missing=()
 for tool in "${REQUIRED_TOOLS[@]}"; do have "$tool" || missing+=("$tool"); done
+for tool in "${REQUIRED_SNO_COMMANDS[@]}"; do runs "$tool" || missing+=("sno $tool"); done
 if (( ${#missing[@]} )); then
-  fail tools "not on PATH: $(join "${missing[@]}")" "install them with: sno setup"
+  fail tools "not available: $(join "${missing[@]}")" "install them with: sno setup"
 else
-  ok tools "$(join "${REQUIRED_TOOLS[@]}") are installed"
+  ok tools "$(join "${REQUIRED_TOOLS[@]}" "${REQUIRED_SNO_COMMANDS[@]/#/sno }") are installed"
 fi
 
 # 2. At least one agent CLI.
@@ -84,15 +88,10 @@ else
 fi
 
 # 4. The commands the skills ship.
-absent=() broken=()
-for c in "${PUBLIC_COMMANDS[@]}"; do
-  if ! have "$c"; then absent+=("$c"); elif ! timeout 10 "$c" --help >/dev/null 2>&1; then broken+=("$c"); fi
-done
-if (( ${#absent[@]} + ${#broken[@]} )); then
-  parts=()
-  (( ${#absent[@]} == 0 )) || parts+=("not installed: $(join "${absent[@]}")")
-  (( ${#broken[@]} == 0 )) || parts+=("does not run: $(join "${broken[@]}")")
-  warn commands "$(join "${parts[@]}")" "run: sno setup"
+broken=()
+for c in "${PUBLIC_COMMANDS[@]}"; do runs "$c" || broken+=("$c"); done
+if (( ${#broken[@]} )); then
+  warn commands "does not run: $(join "${broken[@]}")" "run: sno setup"
 else
   ok commands "${#PUBLIC_COMMANDS[@]} skill commands run"
 fi
@@ -158,27 +157,27 @@ else
 fi
 
 # 7. A heartbeat is running somewhere on this machine.
-if have heartbeat; then
-  running="$(timeout 10 heartbeat --list 2>/dev/null | grep -Ev '^(WHO|\()' | grep -c . || true)"
+if have sno; then
+  running="$(timeout 10 sno heartbeat --list 2>/dev/null | grep -Ev '^(WHO|\()' | grep -c . || true)"
   if (( running > 0 )); then ok heartbeat "$running heartbeat(s) running"
-  else warn heartbeat "no heartbeat is running, so long work has no watcher" "when a long job starts, run: heartbeat --label <name> --interval 10 -- <command>"; fi
+  else warn heartbeat "no heartbeat is running, so long work has no watcher" "when a long job starts, run: sno heartbeat --label <name> --interval 10 -- <command>"; fi
 else
-  skip heartbeat heartbeat
+  skip heartbeat sno
 fi
 
 # 8. Each vendor's subscription quota can be read and allows new work.
-lack="$(lacking subscription-quota-check jq)"
+lack="$(lacking sno jq)"
 if [[ -z "$lack" ]]; then
   (( ${#vendors[@]} )) || warn quota "not checked, no agent CLI is installed" "install claude or codex first"
   for v in ${vendors[@]+"${vendors[@]}"}; do
     # The reader exits non-zero when a vendor is blocked or unreadable but still prints its verdict.
-    reading="$(timeout 60 subscription-quota-check --vendor "$v" --json --quiet 2>/dev/null || true)"
+    reading="$(timeout 60 sno subscription-quota-check --vendor "$v" --json --quiet 2>/dev/null || true)"
     verdict="$(jq -r '.vendors[0].verdict // "unknown"' <<<"$reading" 2>/dev/null || true)"
     verdict="${verdict:-unknown}"
     case "$verdict" in
       go|short_only) ok quota "$v quota reads $verdict" ;;
-      wait) warn quota "$v quota reads wait, so it will refuse new work now" "wait for the reset shown by: subscription-quota-check --vendor $v --human" ;;
-      *) warn quota "$v quota could not be read" "log in to $v on this machine, then run: subscription-quota-check --vendor $v --human" ;;
+      wait) warn quota "$v quota reads wait, so it will refuse new work now" "wait for the reset shown by: sno subscription-quota-check --vendor $v --human" ;;
+      *) warn quota "$v quota could not be read" "log in to $v on this machine, then run: sno subscription-quota-check --vendor $v --human" ;;
     esac
   done
 else

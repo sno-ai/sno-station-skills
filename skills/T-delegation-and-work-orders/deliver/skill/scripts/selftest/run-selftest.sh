@@ -17,14 +17,14 @@ rules = {
     "reasoned steps only": "name the requested result it proves and what changes if it fails",
     "auxiliary failures never block": "never block the work",
     "no success reported on failure": "never report success",
-    "proof is recorded by the command": "deliver-proof run <charter> <n> -- <command>",
+    "proof is recorded by the command": "sno deliver-proof run <charter> <n> -- <command>",
     "proof is judged at the destination": "Prove the result where the requester would see it",
     "never edit the proof by hand": "Never edit the Proof table by hand",
     "close requires the check": "Only when it exits 0",
     "one independent review": "**Review once.**",
     "authorization limits": "only within the owner's authorization",
     "resume from an earlier executor's record": "continue from Next instead of starting over",
-    "checkpoint after every finished step": "After every finished step run `handoff-checkpoint <charter-name>.state.md`",
+    "checkpoint after every finished step": "After every finished step run `sno handoff-checkpoint <charter-name>.state.md`",
 }
 missing = [name for name, phrase in rules.items() if phrase not in text]
 if missing:

@@ -32,7 +32,7 @@ What the executor may not do without the owner: publish, send to other people, s
 (Added by the executor only when the work has dependent steps. Steps in order, who does each.)
 
 ## Proof
-(Written only by `deliver-proof`. Never edited by hand.)
+(Written only by `sno deliver-proof`. Never edited by hand.)
 
 | check | result | how | exit | log | at (UTC) |
 |---|---|---|---|---|---|
@@ -46,7 +46,7 @@ What the executor may not do without the owner: publish, send to other people, s
 - The number of a success check identifies it; the Proof table refers to it. Numbers are
   unique across the whole charter, slices included. Do not renumber a released charter: add
   new checks at the end, and mark a dropped one in place by striking it through, for example
-  `3. ~~old check~~ dropped`; `deliver-proof` does not require or accept proof for it.
+  `3. ~~old check~~ dropped`; `sno deliver-proof` does not require or accept proof for it.
 - Proof logs and evidence files sit beside the charter in `<charter-basename>.proof/`.
 - A big charter is sliced: under `## Success checks`, give each slice a `### <slice name>`
   heading and its own checks, numbered on from the previous slice (slice A has 1-3, slice B has

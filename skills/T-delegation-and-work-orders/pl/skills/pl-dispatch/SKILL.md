@@ -54,7 +54,7 @@ behavior and direct consumers. By default do not add unrequested gates or run th
 suite or evaluations; propose them to the owner as a question. Neither the dispatcher nor a
 default final-gate instruction may authorize them.
 The estimator (`agentic-time-estimate`) is used only when installed; clock times quoted to the
-owner come from `report-time` when installed, otherwise from `date` in the owner's zone,
+owner come from `sno report-time` when installed, otherwise from `date` in the owner's zone,
 never from arithmetic.
 
 **Charter authorship is never a spawnable deliverable.** A charter records
@@ -358,7 +358,7 @@ after a spawn are the launch window, and they belong to you, not to an alarm:
   actually reaches you when the run ends, when the spawn never started, or when the watch
   dies.
 - **Arm the launch heartbeat in the same turn, then end the turn.**
-  `heartbeat --interval 3m --label pl-<name> -- sno reach ring "$PL_ADDR"`; the ring starts each
+  `sno heartbeat --interval 3m --label pl-<name> -- sno reach ring "$PL_ADDR"`; the ring starts each
   launch check. On the first ring run `sno reach doctor --as <address>` to confirm identity. Each
   check is at most one bounded read of the retained seat, `sno reach watch <seat> --timeout 5`
   (never a long or unbounded watch), plus the log. Handle approval-waiting, idle and dead states
@@ -369,7 +369,7 @@ after a spawn are the launch window, and they belong to you, not to an alarm:
   `sno reach seats --json` only to recover or confirm an existing or owner-opened seat; an
   ambiguous result is refused, never narrowed by choosing the first match. Silence detection
   for the run beyond the window is one sentinel tick per minute:
-  `heartbeat --interval 1m --label sentinel-<callsign> -- bash "${PL_SKILL_DIR}/scripts/exec-sentinel.sh" --log <spawn-log> --repo <worktree> --journey <j-id> --pl "$PL_ADDR" --cos "$COS_ADDR" --tick-secs 60`,
+  `sno heartbeat --interval 1m --label sentinel-<callsign> -- bash "${PL_SKILL_DIR}/scripts/exec-sentinel.sh" --log <spawn-log> --repo <worktree> --journey <j-id> --pl "$PL_ADDR" --cos "$COS_ADDR" --tick-secs 60`,
   which rings on silence. (`PL_ADDR` and `COS_ADDR` come from the boot ritual's `lane-resolve.sh` row.)
 - **If an early approval, idle or dead state appears, handle the actionable state.** A dead
   state enters resurrection rather than re-arming the dead seat.
@@ -413,7 +413,7 @@ On an **evidence-class** question (one answerable from a file, a command or a te
 as specified by the Reach guide installed with `sno` (`~/.local/lib/sno-reach/current/guide/agent-reach.md`) with
 `sno reach send --as <your-address>`. After
 sending, **never idle**: do work that doesn't depend on the answer first, and
-only at the dependency point arm `heartbeat --interval 10m --label <name> --
+only at the dependency point arm `sno heartbeat --interval 10m --label <name> --
 sno reach ring <your-address>` and end the turn; the answer, or the ring, starts the
 next one (no blocking wait, no polling loop). When 45 minutes pass with no answer,
 inspect your own action queue (`sno reach inbox --as <your-address>`) and handle crossed

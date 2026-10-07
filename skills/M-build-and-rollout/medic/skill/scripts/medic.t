@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Behaviour test for medic: a real fake HOME (skills, hook files), real jq/git/tmux/df; only the external
-# programs sno, heartbeat, subscription-quota-check, claude and codex are minimal stand-ins.
+# programs sno (with its subcommands heartbeat, subscription-quota-check and the skill commands), claude and
+# codex are minimal stand-ins.
 set -Eeuo pipefail
 
 command_path="$(realpath -- "${1:-$(dirname -- "${BASH_SOURCE[0]}")/medic}")"
@@ -14,18 +15,19 @@ has() { grep -Eq -- "$1" "$root/out"; }
 
 mkdir -p "$root/bin" "$root/home"
 stub() { printf '#!/usr/bin/env bash\n%s\n' "$2" >"$root/bin/$1"; chmod +x "$root/bin/$1"; }
-make_sno() { stub sno 'case "$1 $2" in
+make_sno() { stub sno '[[ ! -e "$FX/broken-$1" ]] || exit 3
+case "$1 $2" in
   "doctor --json") cat "$FX/doctor.json" ;;
   "reach seats") cat "$FX/seats.jsonl" ;;
   "reach --version") echo 2.0.4 ;;
+  "heartbeat --list") cat "$FX/heartbeats" ;;
+  "subscription-quota-check --vendor") cat "$FX/quota-$3"; exit "$(cat "$FX/quota-$3.exit" 2>/dev/null || echo 0)" ;;
+  "heartbeat --help"|"subscription-quota-check --help"|"deliver-proof --help"|"handoff-checkpoint --help"|"rotate-agent-resume --help"|"rem-reflect --help") exit 0 ;;
   *) exit 64 ;;
 esac'
   sed -i "2i FX=$root/fx" "$root/bin/sno"; }
 make_sno
-stub heartbeat 'if [[ "${1:-}" == --list ]]; then cat '"$root"'/fx/heartbeats; else echo usage; fi'
-stub subscription-quota-check 'vendor=""; while (( $# )); do [[ "$1" == --vendor ]] && vendor="$2"; shift; done; cat '"$root"'/fx/quota-"$vendor"; exit "$(cat '"$root"'/fx/quota-"$vendor".exit 2>/dev/null || echo 0)"'
 for c in claude codex; do stub "$c" 'exit 0'; done
-for c in deliver-proof handoff-checkpoint rotate-agent-resume rem-reflect; do stub "$c" 'exit 0'; done
 
 good_setup() {
     make_sno
@@ -42,8 +44,7 @@ J
     printf '{"address":"me.main@box","channel":"tmux","handle":"x","state":"live"}\n{"address":"old.one@box","channel":"tmux","handle":"y","state":"stale"}\n' >"$root/fx/seats.jsonl"
     printf 'WHO  OWNER LABEL PID LOG\nyou  o1 nightly 123 /tmp/x.log\n' >"$root/fx/heartbeats"
     for v in claude codex; do printf '{"vendors":[{"vendor":"%s","verdict":"go"}]}\n' "$v" >"$root/fx/quota-$v"; done
-    for c in deliver-proof handoff-checkpoint rotate-agent-resume rem-reflect claude codex; do stub "$c" 'exit 0'; done
-    stub heartbeat 'if [[ "${1:-}" == --list ]]; then cat '"$root"'/fx/heartbeats; else echo usage; fi'
+    for c in claude codex; do stub "$c" 'exit 0'; done
 }
 tree_hash() { (cd -- "$root/home" && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum); }
 
@@ -71,8 +72,8 @@ expect_line() { # level check fragment description ; expects a line "LEVEL check
     grep -Eq "^$1 $2: .*$3.* -> .+" "$root/out" || fail "$4"
 }
 
-good_setup; rm "$root/bin/heartbeat"
-status="$(run run)"; [[ "$status" == 1 ]] && expect_line FAIL tools heartbeat 'a missing required tool is FAIL tools naming it, exit 1' || fail 'missing tool: exit 1 and FAIL tools naming it'
+good_setup; touch "$root/fx/broken-heartbeat"
+status="$(run run)"; [[ "$status" == 1 ]] && expect_line FAIL tools 'sno heartbeat' 'a missing required tool is FAIL tools naming it, exit 1' || fail 'missing tool: exit 1 and FAIL tools naming it'
 good_setup; rm "$root/bin/sno"
 run run >/dev/null
 grep -Eq '^WARN seat: not checked, sno is missing' "$root/out" || fail 'a check names only the program that is actually missing'
@@ -86,9 +87,9 @@ status="$(run run)"; [[ "$status" == 0 ]] || fail 'a missing skill is a WARN, ex
 expect_line WARN skills 'join-talk, charter' 'names the skills missing for claude'
 expect_line WARN skills 'deliver' 'names the skill missing for codex'
 grep -q ',  ' "$root/out" && fail 'a list in a line is joined with one space after each comma'
-good_setup; stub rem-reflect 'exit 3'; rm "$root/bin/deliver-proof"
-run run >/dev/null; expect_line WARN commands 'deliver-proof' 'names the missing command'; expect_line WARN commands 'rem-reflect' 'names the command that does not run'
-ok 'WARN names each missing skill and each command that is missing or fails'
+good_setup; touch "$root/fx/broken-rem-reflect" "$root/fx/broken-deliver-proof"
+run run >/dev/null; expect_line WARN commands 'deliver-proof' 'names the command that does not run'; expect_line WARN commands 'rem-reflect' 'names the other command that does not run'
+ok 'WARN names each missing skill and each command that does not run'
 
 good_setup; sed -i 's/"claude configured","result":"ok"/"claude configured","result":"missing"/' "$root/fx/doctor.json"
 run run >/dev/null; expect_line WARN hooks 'claude' 'hooks not configured for claude'

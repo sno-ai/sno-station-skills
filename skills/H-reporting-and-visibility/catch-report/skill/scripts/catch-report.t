@@ -56,7 +56,7 @@ has '  unknown (older records): runs 1, high 1, medium 0, fix-now 0, debt 0' || 
 has 'Verdicts: needs-attention 3, approve 1' || fail 'verdict counts'
 has 'Two brains (who found the problems):' || fail 'the two-brains block exists'
 has '  Mutual review (the other model checks the work; all peer-review records): reviews 4, fix-now 5, high 6, medium 1' || fail 'mutual review totals: every review in the window'
-has '  Self-check (an agent finds its own error in its own conversation): not measured by run; use: catch-report self' || fail 'the self-check line points at catch-report self'
+has '  Self-check (an agent finds its own error in its own conversation): not measured by run; use: sno catch-report self' || fail 'the self-check line points at sno catch-report self'
 has 'Mutual review found 5 problems that had to be fixed now and 6 high-severity findings.' || fail 'the headline sentence'
 [[ "$(sed -n 2p "$root/out")" == 'Two brains (who found the problems):' ]] || fail 'the two-brains block comes first, right after the title'
 ok 'review counts, per-model totals and verdicts equal the hand-computed values'
@@ -255,7 +255,7 @@ has '- In 7 moments an agent hit a failing command or admitted a mistake, its ow
 [[ "$(grep -c '^  - "' "$root/out")" == 2 ]] || fail 'one sentence per conversation is quoted as an example (two conversations here)'
 prev=0; while IFS= read -r q; do len=${#q}; (( len >= prev )) || fail 'the quotes are ordered shortest first'; prev=$len; done < <(grep '^  - "' "$root/out")
 has '## How to read this' || fail 'the how-to-read section'
-has 'Must-fix means' && has 'counts moments, not distinct bugs' && has 'Check any number with: catch-report self' || fail 'the reading notes define must-fix and say how to check a number'
+has 'Must-fix means' && has 'counts moments, not distinct bugs' && has 'Check any number with: sno catch-report self' || fail 'the reading notes define must-fix and say how to check a number'
 (( $(wc -l <"$root/out") <= 45 )) || fail 'the page stays within 45 lines'
 ok 'brief: the self-check section with quotes, and how to read the numbers'
 

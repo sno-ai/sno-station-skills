@@ -37,7 +37,7 @@ ok 'same-second runs retain their own logs and rows'
 
 mkdir -p -- "$root/empty-repo"
 status="$(cd -- "$root/empty-repo" && run)"
-[[ "$status" == 0 && "$(cat "$root/out")" == 'usage: deliver-proof run CHARTER N -- COMMAND... | see CHARTER N FILE TEXT | check CHARTER' && ! -s "$root/err" ]] || fail 'no arguments print usage to stdout and succeed'
+[[ "$status" == 0 && "$(cat "$root/out")" == 'usage: sno deliver-proof run CHARTER N -- COMMAND... | see CHARTER N FILE TEXT | check CHARTER' && ! -s "$root/err" ]] || fail 'no arguments print usage to stdout and succeed'
 [[ "$(run unknown)" == 2 ]] || fail 'unknown verb exits 2'
 ok 'no arguments and unknown verb have distinct exit contracts'
 

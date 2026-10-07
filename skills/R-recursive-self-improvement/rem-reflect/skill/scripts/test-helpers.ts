@@ -4,35 +4,41 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { join, relative } from 'node:path';
 import type { Config } from './config.ts';
 import { initializeStore, emptyState, writeJson, git } from './store.ts';
 
+// Test directories live on the home disk, never under the system temp directory, which on this machine is the shared RAM disk.
+export const testTempRoot = join(homedir(), '.cache', 'rem-reflect-tests');
+mkdirSync(testTempRoot, { recursive: true });
 // Every temp directory a test process creates is removed when that process exits.
 const madeDirs: string[] = [];
 process.once('exit', () => { for (const dir of madeDirs) rmSync(dir, { recursive: true, force: true }); });
 function makeTempDir(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
+  const dir = mkdtempSync(join(testTempRoot, prefix));
   madeDirs.push(dir);
   return dir;
 }
 
-// Unit tests never reach this machine's installed `sno` or `sno-observe`: at load, stand-ins go
-// first on PATH. `sno` answers consent full (labeling and upload only run at full) and an empty cloud verdict, and refuses anything else; `sno-observe`
-// accepts every append. A test that prepends its own stand-in later still wins.
+// Unit tests never reach this machine's installed `sno`: at load, a stand-in goes first on PATH.
+// It answers consent full (labeling and upload only run at full), an empty cloud verdict, and accepts every
+// `observe append`; it refuses anything else. A test that prepends its own stand-in later still wins.
 if (!process.env.REM_SELFTEST) {
   const bin = makeTempDir('rem-sno-default-');
   writeFileSync(join(bin, 'sno'), [
     '#!/usr/bin/env node',
     "const args = process.argv.slice(2).join(' ');",
+    "if (args.startsWith('observe append ')) process.exit(0);",
     "if (args === 'station telemetry consent get') { console.log(process.env.REM_TEST_CONSENT || 'full'); process.exit(0); }",
+    "if (args === 'skills get rem-reflect-local-writer') { const binary = process.env.REM_TEST_SNO_CLI; if (!binary) { process.stdout.write('Read one finished coding-agent session and decide whether it teaches one lesson worth keeping.\\n'); process.exit(0); } const result = require('node:child_process').spawnSync(binary, process.argv.slice(2), {encoding:'utf8'}); process.stdout.write(result.stdout || ''); process.stderr.write(result.stderr || ''); process.exit(result.status === null ? 1 : result.status); }",
+    "if (args === 'heartbeat' || args.startsWith('heartbeat ')) { const binary = process.env.REM_TEST_SNO_CLI || require('node:path').join(require('node:os').homedir(), '.local/bin/sno'); const result = require('node:child_process').spawnSync(binary, process.argv.slice(2), {encoding:'utf8'}); if (result.error) { console.error(String(result.error.message)); process.exit(1); } process.stdout.write(result.stdout || ''); process.stderr.write(result.stderr || ''); process.exit(result.status === null ? 1 : result.status); }",
     "if (args !== 'rem judge') { console.error('unexpected sno command: ' + args); process.exit(2); }",
     "const batch = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));",
+    "if (process.env.REM_TEST_CONSENT && process.env.REM_TEST_CONSENT !== 'full') { console.error('upload rejected: consent ' + process.env.REM_TEST_CONSENT); process.exit(1); }",
     "console.log(JSON.stringify({ schema_version: 1, run_id: batch.run_id, history_acknowledged: true, history_links: [],",
     "  halves: batch.halves.map(half => ({ harness: half.harness, attention: [], pages: [], lessons: [], proposals: [], read_judgments: [], log_entry: 'no supported change' })) }));",
   ].join('\n') + '\n', { mode: 0o755 });
-  writeFileSync(join(bin, 'sno-observe'), '#!/bin/sh\n[ "$1" = append ] && exit 0\nexit 2\n', { mode: 0o755 });
   process.env.PATH = `${bin}:${process.env.PATH ?? ''}`;
 }
 
@@ -48,6 +54,7 @@ export function stationSettings(mode = 'agent-native', rows: Record<string, Reco
     R2: { 'local-first': 'off', 'agent-native': 'host', 'rem-enhanced': 'host' },
     R3: { 'local-first': 'off', 'agent-native': 'sno-gpu', 'rem-enhanced': 'sno-gpu' },
     R4: { 'local-first': 'off', 'agent-native': 'sno-gpu', 'rem-enhanced': 'sno-gpu' },
+    R5: { 'local-first': 'host', 'agent-native': 'off', 'rem-enhanced': 'off' },
     ...rows,
   } });
 }
@@ -203,6 +210,11 @@ export class FixtureBackend implements Backend {
       const label = this.opts.label ? this.opts.label(traceId)
         : { decision: 'keep', outcome: 'fail', reason: 'fixture fail', evidence: [], key_ranges: [], notes: '' };
       return { stdout: JSON.stringify(label) };
+    }
+    // The Local First nightly writer: a model that finds nothing worth keeping.
+    if (input.includes('one lesson worth keeping')) {
+      this.calls.push({ kind: 'writer', cli: req.cli, input });
+      return { stdout: '{"lesson":null}' };
     }
     throw new Error('unexpected model input');
   }

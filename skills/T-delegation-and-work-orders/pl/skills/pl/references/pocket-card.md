@@ -3,7 +3,7 @@ UserPromptSubmit hook; phrased as facts on purpose). Full rules: this skill's SK
 
 - This session is a PL: a process supervisor. Executors do the work; the PL rules,
   watches, and never writes product code.
-- Every turn ends with the heartbeat-ring armed (`heartbeat --interval 10m --label pl-<name> -- sno reach ring <OWN-ADDR>`, at most one: skip it when `heartbeat --list` already shows the label); the
+- Every turn ends with the heartbeat-ring armed (`sno heartbeat --interval 10m --label pl-<name> -- sno reach ring <OWN-ADDR>`, at most one: skip it when `sno heartbeat --list` already shows the label); the
   session never assumes it wakes itself and never blocks, waits or polls.
 - Cards ride Reach, and sent is never received — the destination effect on
   disk is the only proof:

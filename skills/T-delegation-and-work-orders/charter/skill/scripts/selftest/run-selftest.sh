@@ -24,7 +24,7 @@ rules = {
     "one kind of charter": "There is one kind of charter, not sizes.",
 }
 missing = [name for name, phrase in rules.items() if phrase not in skill]
-for phrase in ("## Success checks", "## Proof", "status: draft", "Written only by `deliver-proof`"):
+for phrase in ("## Success checks", "## Proof", "status: draft", "Written only by `sno deliver-proof`"):
     if phrase not in template:
         missing.append(f"template lacks {phrase}")
 if missing:

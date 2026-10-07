@@ -66,7 +66,7 @@ function previousHeader(trace: Trace, all: readonly Trace[], labels: ReadonlyMap
     label: labels.get(traceKey(item)) ?? null }));
   return { traces, text: truncate(JSON.stringify(previous), limits.chunkCharacters) };
 }
-function eventLines(trace: Trace): Set<number> {
+export function eventLines(trace: Trace): Set<number> {
   const lines = new Set(readCalls(trace).filter(call => call.failed).map(call => call.line_end));
   const rendered = renderTrace(trace, loadRenderBudgets());
   const records = new Map(trace.records.map(record => [record.line_number, record]));

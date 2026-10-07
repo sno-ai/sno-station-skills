@@ -60,12 +60,13 @@ test('the cell comes from the file for the current mode, and a missing file, mod
 });
 
 test('local-first labels nothing, uploads nothing and says why', t => {
-  const { store, result, labeler } = nightRun(t, 'local-first');
+  const { store, backend, result, labeler } = nightRun(t, 'local-first');
   assert.equal(result.code, 0, result.lines.join('\n'));
   assert.equal(labeler, 0, 'no labeler process');
+  assert.equal(backend.calls.filter(call => call.kind === 'writer').length, 1, 'its own CLI is asked once for a lesson');
   assert.equal(stagingFile(store, 'cloud-request.json'), undefined, 'no upload');
   assert.equal(labelFiles(store).length, 0);
-  assert.match(readFileSync(join(store, 'staging', readdirSync(join(store, 'staging'))[0], 'run.log'), 'utf8'), /R2 labeling off; R3 upload skipped: R3 is off under this mode/);
+  assert.match(readFileSync(join(store, 'staging', readdirSync(join(store, 'staging'))[0], 'run.log'), 'utf8'), /R2 labeling off; R3 upload skipped: local-first mode/);
 });
 
 test('agent-native at full consent labels on its own CLI and uploads the labeled session', t => {
@@ -77,20 +78,22 @@ test('agent-native at full consent labels on its own CLI and uploads the labeled
   assert.match(readFileSync(join(store, 'staging', readdirSync(join(store, 'staging'))[0], 'run.log'), 'utf8'), /R2 labeling runs; R3 upload sends/);
 });
 
-test('below full consent neither the labeler nor the upload runs, in every mode', async t => {
+test('below full consent the CLI rejection leaves local labeling and the day successful', async t => {
   for (const mode of ['agent-native', 'rem-enhanced']) {
     await t.test(mode, sub => {
-      const { store, labeler } = nightRun(sub, mode, {}, { REM_TEST_CONSENT: 'metadata-only' });
-      assert.equal(labeler, 0, 'no labeler');
-      assert.equal(stagingFile(store, 'cloud-request.json'), undefined, 'no upload');
+      const { store, labeler, result } = nightRun(sub, mode, {}, { REM_TEST_CONSENT: 'metadata-only' });
+      assert.equal(result.code, 0);
+      assert.equal(labeler, 1, 'local labeler still runs');
+      assert.ok(stagingFile(store, 'cloud-request.json'), 'request retained after CLI rejects consent');
+      assert.match(result.lines.join('\n'), /cloud run .* send failed: .*upload rejected: consent metadata-only/);
     });
   }
 });
 
-test('with the upload cell off the labeler does not run either', t => {
+test('the mode controls sharing even when the old upload cell is off', t => {
   const { store, labeler } = nightRun(t, 'agent-native', { R3: { 'local-first': 'off', 'agent-native': 'off', 'rem-enhanced': 'off' } });
-  assert.equal(labeler, 0);
-  assert.equal(stagingFile(store, 'cloud-request.json'), undefined);
+  assert.equal(labeler, 1);
+  assert.ok(stagingFile(store, 'cloud-request.json'));
 });
 
 test('with the labeling cell off the session still uploads, kept with an unknown outcome and no CLI turn', t => {
@@ -181,7 +184,7 @@ test('the first-prompt lookup reaches the cloud only when its cell is sno-gpu an
   assert.equal(sent.sent(), 1);
   for (const [name, args] of [['local-first mode', ['local-first', 'full']], ['metadata-only consent', ['agent-native', 'metadata-only']],
     ['cell off', ['agent-native', 'full', { R4: { 'local-first': 'off', 'agent-native': 'off', 'rem-enhanced': 'off' } }]]] as const) {
-    const blocked = firstPrompt(t, ...(args as [string, string, Record<string, Record<string, string>>?]));
+    const blocked = firstPrompt(t, args[0], args[1], args.length === 3 ? args[2] : {});
     const first = blocked.prompt('s1');
     assert.equal(first.status, 0, `${name}: the prompt is never blocked`);
     assert.equal(first.stdout, '', name);

@@ -67,11 +67,11 @@ case "${1:-}" in
     done
 
     if [ -n "$wrapper" ]; then
-      # report-time reads the wall off the wrapper's argv and refuses to guess --
+      # sno report-time reads the wall off the wrapper's argv and refuses to guess --
       # that refusal propagates as our exit 2, which is correct: a half-read
       # deadline is worse than none.
-      command -v report-time >/dev/null 2>&1 || die "report-time not found on PATH (Sno Station installs it with sno setup)"
-      deadline=$(report-time --pid "$wrapper") || exit 2
+      command -v sno >/dev/null 2>&1 || die "sno not found on PATH (it provides report-time; install Sno Station)"
+      deadline=$(sno report-time --pid "$wrapper") || exit 2
       if [ "$wrapper" = "$pid" ]; then
         printf 'deadline: %s\n' "$deadline"
       else

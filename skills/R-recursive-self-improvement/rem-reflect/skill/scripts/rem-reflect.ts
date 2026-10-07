@@ -54,8 +54,8 @@ export function run(store: string, now: Date = new Date(), user?: string,
   const prior = readLock(store);
   if (prior && processAlive(prior.pid)) return held(prior);
   let state = fresh ? emptyState() : readState(store);
-  if (!fresh) flushCloudVerdicts(store);
-  if (succeededToday(state, start.date)) return { code: 0, lines: [`no-op: ${state.last_terminal!.id} already succeeded on ${start.date}`] };
+  const cloudErrors = fresh ? [] : flushCloudVerdicts(store).errors;
+  if (succeededToday(state, start.date)) return { code: 0, lines: [`no-op: ${state.last_terminal!.id} already succeeded on ${start.date}`, ...cloudErrors] };
   privateDirectory(store);
   // Finish the bootstrap before recovery touches git. A first run killed mid-initialization can
   // leave a store with no repository, or one with a repository and no config.json — recovering
@@ -77,10 +77,12 @@ export function run(store: string, now: Date = new Date(), user?: string,
     state = readState(store);
     if (succeededToday(state, start.date)) {
       releaseLock(store);
-      return { code: 0, lines: [`no-op: ${state.last_terminal!.id} already succeeded on ${start.date}`] };
+      return { code: 0, lines: [`no-op: ${state.last_terminal!.id} already succeeded on ${start.date}`, ...cloudErrors] };
     }
   }
-  return executeHarvest(store, config, state, start, now, userId, notice, backend, clock, started, trigger);
+  const result = executeHarvest(store, config, state, start, now, userId, notice, backend, clock, started, trigger);
+  result.lines.push(...cloudErrors);
+  return result;
 }
 
 function executeHarvest(store: string, config: ReturnType<typeof defaultConfig>, state: State,
@@ -136,7 +138,7 @@ export function heartbeatLine(output: string): string | undefined {
 
 function listedHeartbeat(): string {
   try {
-    return execFileSync('heartbeat', ['--list'], {
+    return execFileSync('sno', ['heartbeat', '--list'], {
       encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'],
     });
   } catch { return ''; }
@@ -254,9 +256,10 @@ export function main(args: string[] = process.argv.slice(2)): number {
       if (result.code === 0) {
         try {
           const sync = flushCloudVerdicts(storePath());
-          if (sync.pending) result.lines.push(`${sync.pending} cloud verdict pending until full consent`);
+          result.lines.push(...sync.errors);
+          if (sync.pending) result.lines.push(`${sync.pending} cloud verdict pending`);
         } catch (error) {
-          result = { code: 1, lines: [...result.lines, `local decision persisted; cloud verdict pending: ${String(error)}`] };
+          result.lines.push(`local decision persisted; cloud verdict ${ids[0]} pending: ${String(error)}`);
         }
       }
     }

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { appendFileSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { Config } from './config.ts';
-import { reflectionFiles, isObject, limits, skillRoots, stationCell } from './config.ts';
+import { reflectionFiles, isObject, limits, skillRoots, stationCell, readStationSettings } from './config.ts';
 import { installedCatalogue } from './catalogue.ts';
 import { chunkRendering } from './chunk.ts';
 import { traceKey } from './evidence.ts';
@@ -40,43 +40,52 @@ export function localConsent(): 'off' | 'metadata-only' | 'full' {
   return level;
 }
 
-// R3 (nightly upload) and R4 (first-prompt lookup) send session text to the Sno cloud only when the
-// call's cell is `sno-gpu` and the one consent level is `full`. Throws when the settings file or the
+// R4 (first-prompt lookup) sends text only when its cell is `sno-gpu` and consent is `full`.
+// Daily runs and verdicts instead share by mode, with consent enforced by sno rem. Throws when the
 // consent level cannot be read; the caller reports that and sends nothing.
-export function cloudStepGate(id: 'R3' | 'R4'): { send: true } | { send: false; reason: string } {
+export function cloudStepGate(id: 'R4'): { send: true } | { send: false; reason: string } {
   const cell = stationCell(id);
   if (cell !== 'sno-gpu') return { send: false, reason: `${id} is ${cell} under this mode` };
   const consent = localConsent();
   return consent === 'full' ? { send: true } : { send: false, reason: `consent ${consent}` };
 }
 
-export function flushCloudVerdicts(store: string): { sent: number; pending: number } {
+export function flushCloudVerdicts(store: string): { sent: number; pending: number; errors: string[] } {
   const newest = new Map<string, Record<string, unknown>>();
   for (const row of readLedger(store).filter(row => row.type === 'cloud-verdict' && typeof row.judgment_id === 'string')) {
     newest.set(String(row.judgment_id), row);
   }
   const pending = [...newest.values()].filter(row => row.status === 'pending');
-  if (!pending.length) return { sent: 0, pending: 0 };
-  if (localConsent() !== 'full') return { sent: 0, pending: pending.length };
+  const errors: string[] = [];
+  if (!pending.length) return { sent: 0, pending: 0, errors };
   let sent = 0;
   for (const row of pending) {
     const id = String(row.judgment_id);
     const verdict = String(row.verdict);
     const promoted = row.applies_to === 'general';
-    const result = spawnSync('sno', ['rem', 'verdict', id, verdict, ...(promoted ? ['--all-projects'] : [])],
-      { encoding: 'utf8' });
-    if (result.error) throw result.error;
-    if (result.status !== 0) throw new Error(result.stderr?.trim() || `sno rem verdict exited ${result.status}`);
-    if (!result.stdout) throw new Error('cloud verdict: empty acknowledgment');
-    const answer: unknown = JSON.parse(result.stdout);
-    if (!isObject(answer) || answer.schema_version !== 1 || answer.judgment_id !== id
-      || answer.verdict !== verdict || answer.acknowledged !== true
-      || (promoted && answer.applies_to !== 'general')) throw new Error('cloud verdict: mismatched acknowledgment');
-    appendLedger(store, { ...row, status: 'acked', ...(promoted ? { applies_to: answer.applies_to } : {}) });
-    commitStore(store, `cloud verdict ${id}`);
-    sent++;
+    try {
+      if (readStationSettings().mode === 'local-first') break;
+      const result = spawnSync('sno', ['rem', 'verdict', id, verdict, ...(promoted ? ['--all-projects'] : [])],
+        { encoding: 'utf8' });
+      if (result.error) throw result.error;
+      if (result.status !== 0) throw new Error(result.stderr?.trim() || `sno rem verdict exited ${result.status}`);
+      if (!result.stdout) throw new Error('cloud verdict: empty acknowledgment');
+      const answer: unknown = JSON.parse(result.stdout);
+      if (!isObject(answer) || answer.schema_version !== 1 || answer.judgment_id !== id
+        || answer.verdict !== verdict || answer.acknowledged !== true
+        || (promoted && answer.applies_to !== 'general')) throw new Error('cloud verdict: mismatched acknowledgment');
+      appendLedger(store, { ...row, status: 'acked', ...(promoted ? { applies_to: answer.applies_to } : {}) });
+      commitStore(store, `cloud verdict ${id}`);
+      sent++;
+    } catch (error) {
+      const message = `cloud verdict ${id} send failed: ${String(error)}; local verdict unchanged, upload pending`;
+      errors.push(message);
+      const logPath = join(store, reflectionFiles.runLog);
+      try { appendFileSync(logPath, `${message}\n`); }
+      catch (logError) { errors.push(`cloud verdict ${id} log failed at ${logPath}: ${String(logError)}`); }
+    }
   }
-  return { sent, pending: 0 };
+  return { sent, pending: pending.length - sent, errors };
 }
 
 export function buildCloudBatch(store: string, config: Config, runId: string, retained: readonly Trace[],
@@ -148,6 +157,18 @@ export function sendCloudBatch(store: string, batch: {
   return response as unknown as CloudResponse;
 }
 
+export function applyCloudHistoryLinks(store: string, links: readonly unknown[]): Set<string> {
+  const linked = new Set(readLedger(store).flatMap(row => typeof row.judgment_id === 'string' ? [row.judgment_id] : []));
+  for (const raw of links) {
+    if (!isObject(raw) || typeof raw.kind !== 'string' || typeof raw.local_id !== 'string'
+      || typeof raw.judgment_id !== 'string') throw new Error('cloud batch: invalid history link');
+    if (linked.has(raw.judgment_id)) continue;
+    appendLedger(store, { type: 'cloud-link', kind: raw.kind, local_id: raw.local_id, judgment_id: raw.judgment_id });
+    linked.add(raw.judgment_id);
+  }
+  return linked;
+}
+
 export function applyCloudResponse(store: string, config: Config, response: CloudResponse): void {
   let userLessonsIssued = 0;
   const projectLessonsIssued = new Map<string, number>();
@@ -158,16 +179,9 @@ export function applyCloudResponse(store: string, config: Config, response: Clou
     if (!isObject(entry) || typeof entry.path !== 'string' || typeof entry.skill_md !== 'string') throw new Error('cloud batch: saved catalogue invalid');
     uploaded.set(entry.path, entry.skill_md);
   }
-  const linked = new Set(readLedger(store).filter(row => typeof row.judgment_id === 'string').map(row => row.judgment_id));
+  const linked = applyCloudHistoryLinks(store, response.history_links);
   const judged = new Set(readLedger(store).filter(row => row.type === 'lesson-judgment')
     .map(row => `${row.trace_id}::${row.lesson_id}`));
-  for (const raw of response.history_links) {
-    if (!isObject(raw) || typeof raw.kind !== 'string' || typeof raw.local_id !== 'string'
-      || typeof raw.judgment_id !== 'string') throw new Error('cloud batch: invalid history link');
-    if (linked.has(raw.judgment_id)) continue;
-    appendLedger(store, { type: 'cloud-link', kind: raw.kind, local_id: raw.local_id, judgment_id: raw.judgment_id });
-    linked.add(raw.judgment_id);
-  }
   for (const half of response.halves) {
     if (!isObject(half) || !['claude-code', 'codex'].includes(String(half.harness))
       || !Array.isArray(half.pages) || !Array.isArray(half.lessons) || !Array.isArray(half.proposals)

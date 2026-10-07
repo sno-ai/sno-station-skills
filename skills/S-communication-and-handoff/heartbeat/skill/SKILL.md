@@ -1,6 +1,6 @@
 ---
 name: heartbeat
-description: "Set recurring checks or completion watches with `heartbeat` and its persistent log reader. Use for periodic reports or unattended long runs. Not for calendar scheduling or commands watched directly."
+description: "Set recurring checks or completion watches with `sno heartbeat` and its persistent log reader. Use for periodic reports or unattended long runs. Not for calendar scheduling or commands watched directly."
 requires:
   programs:
     - {name: heartbeat, min_version: "1.0"}
@@ -12,14 +12,14 @@ requires:
 
 # heartbeat
 
-Use the `heartbeat` command installed by `sno setup`. This skill supplies
+Use the `sno heartbeat` command installed by `sno setup`. This skill supplies
 instructions, not a program copy. If the command names a missing prerequisite, install
 that tool and retry. On macOS `coreutils` supplies GNU `timeout` and `tail`; put its
 `libexec/gnubin` directory on PATH, and install `bash` and `flock` when required.
 Windows requires WSL.
 
 [The bundled command contract](references/heartbeat-contract.json) pins the public syntax
-checked by this skill's offline self-test. Use `heartbeat --help` for the installed program.
+checked by this skill's offline self-test. Use `sno heartbeat --help` for the installed program.
 
 Before arming, verify that this harness provides both background execution and a
 persistent reader that delivers new output into the agent's conversation. If either is
@@ -30,7 +30,7 @@ their own equivalents. A background process or a log file alone is insufficient.
 Before either shape, create a fresh empty log with `mktemp "${TMPDIR:-/tmp}/heartbeat.XXXXXX"`.
 Use its returned path as `<LOG>` in both calls. Never reuse a previous run's log.
 Copy one of these two blocks and set the label, interval and paths. Both calls are required.
-When armed, `heartbeat` prints its process id and a suggested reader command of the form
+When armed, `sno heartbeat` prints its process id and a suggested reader command of the form
 `tail --pid=<PID> -F -n0 <log>`. Put that process id in `<PID>` below; the reader here uses
 `-n +1` instead of `-n0`, for the reason given under "The one rule".
 
@@ -41,7 +41,7 @@ A long run you want progress from — training, an exam, a generation queue, a b
 ```
 Bash({
   run_in_background: true,
-  command: "heartbeat --interval 30 --label train-1500 --log \"<LOG>\" \
+  command: "sno heartbeat --interval 30 --label train-1500 --log \"<LOG>\" \
     -- tail -1 outputs/train-1500/metrics.jsonl"
 })
 
@@ -67,7 +67,7 @@ The commonest job there is, and the one most often replaced with three lines of 
 ```
 Bash({
   run_in_background: true,
-  command: "heartbeat --label build --until-file out/result.json --log \"<LOG>\""
+  command: "sno heartbeat --label build --until-file out/result.json --log \"<LOG>\""
 })
 
 Monitor({
@@ -167,11 +167,11 @@ Three ways down, best first:
 
 1. **Let it end itself.** `--until-file` — the job's own output ends the watch, and nobody has
    to remember anything.
-2. **Stop it when you decide.** `heartbeat --stop train-1500` — the thing was found, the
+2. **Stop it when you decide.** `sno heartbeat --stop train-1500` — the thing was found, the
    question was answered, the hook is no longer worth running.
 3. **The wall clock.** `--max-hours`, default 24. A heartbeat nobody stopped still stops.
 
-`heartbeat --list` shows everything running on the machine, yours marked `you`.
+`sno heartbeat --list` shows everything running on the machine, yours marked `you`.
 
 Never kill a heartbeat by pid or by `pkill`. `--stop` knows which one is yours; a pattern
 match does not, and a loose one matches the shell doing the matching.

@@ -7,7 +7,7 @@
 # produces no signal.
 #
 # Run one tick per heartbeat; its interval must equal --tick-secs.
-# heartbeat --interval 1m --label sentinel-<executor> -- bash <skill-dir>/scripts/exec-sentinel.sh --log L --repo R --pl A --cos B --tick-secs 60
+# sno heartbeat --interval 1m --label sentinel-<executor> -- bash <skill-dir>/scripts/exec-sentinel.sh --log L --repo R --pl A --cos B --tick-secs 60
 #
 # IT WATCHES A BRANCH, NOT ONE WORK ITEM, AND THAT IS A REAL LIMIT. The commit counter is
 # `git rev-list --count HEAD` on the worktree, so ANY executor committing to that branch

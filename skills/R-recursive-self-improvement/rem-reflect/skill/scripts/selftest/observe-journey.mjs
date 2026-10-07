@@ -1,8 +1,7 @@
-// the usage-statistics rows rem-reflect sends through `sno-observe append`,
+// the usage-statistics rows rem-reflect sends through `sno observe append`,
 // driven through the real CLI entry (`rem-reflect.ts run|accept|reject`) on the fixture store.
-// With the recording `sno-observe` shim first on PATH, every call lands as one argv line in
-// REM_OBSERVE_CAPTURE (the `sno` shim records a legacy `sno observe append` there too, which the
-// reader refuses); with no `sno` or `sno-observe` on PATH at all, the commands must exit as they
+// With the recording `sno` shim first on PATH, every call lands as one argv line (after `observe`) in
+// REM_OBSERVE_CAPTURE; with no `sno` on PATH at all, the commands must exit as they
 // did before the emitters existed and the run's run.log must name the missing program once.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -27,8 +26,8 @@ const SRC_MT = new Date('2026-09-14T00:00:00Z').getTime();
 const SELF_MT = new Date('2026-09-15T06:00:00Z').getTime();
 // `run --now 2026-09-15T00:00:00Z` on a fresh store and `accept <run>/claude-code` on a store
 // holding that pending proposal. The consent read fails first in both, as it did then.
-const NO_SNO_RUN_EXIT = 1;
-const NO_SNO_ACCEPT_EXIT = 1;
+const NO_SNO_RUN_EXIT = 0;
+const NO_SNO_ACCEPT_EXIT = 0;
 const cleanup = [];
 
 // One fixture: a HOME whose .claude/.codex are the harvest roots, three sessions per harness,
@@ -43,7 +42,7 @@ function fixture() {
   writeFileSync(join(claudeHome, '.credentials.json'), '{"claude":"fixture-token"}');
   writeFileSync(join(codexHome, 'auth.json'), '{"codex":"fixture-token"}');
   mkdirSync(join(home, '.sno'), { recursive: true });
-  writeFileSync(join(home, '.sno', 'settings.json'), stationSettings());
+  writeFileSync(join(home, '.sno', 'settings.json'), stationSettings('rem-enhanced'));
   const config = makeConfig({
     claude_home: claudeHome, codex_home: codexHome,
     claude_root: join(claudeHome, 'projects'), codex_root: join(codexHome, 'sessions'),
@@ -60,7 +59,7 @@ function fixture() {
   return { home, config, store, capture: join(home, 'observe.log') };
 }
 
-// A PATH holding node, git, the shell tools the loop reaches and the claude/codex/heartbeat shims,
+// A PATH holding node, git, the shell tools the loop reaches and the claude/codex shims,
 // but no `sno` of any kind.
 function noSnoBin() {
   const dir = tmp('observe-nosno-bin');
@@ -71,7 +70,7 @@ function noSnoBin() {
     if (real) symlinkSync(real, join(dir, prog));
   }
   symlinkSync(process.execPath, join(dir, 'node'));
-  for (const shim of ['claude', 'codex', 'heartbeat', 'shim-core.cjs']) copyFileSync(join(BIN, shim), join(dir, shim));
+  for (const shim of ['claude', 'codex', 'shim-core.cjs']) copyFileSync(join(BIN, shim), join(dir, shim));
   const probe = spawnSync(join(dir, 'bash'), ['-c', 'command -v sno'], { env: { PATH: dir }, encoding: 'utf8' });
   assert.notEqual(probe.status, 0, `the no-sno PATH still resolves sno: ${probe.stdout}`);
   return dir;
@@ -79,7 +78,7 @@ function noSnoBin() {
 
 function cli(fx, args, path, extra = {}) {
   const env = { ...process.env, PATH: path, HOME: fx.home, CLAUDE_CONFIG_DIR: join(fx.home, '.claude'),
-    CODEX_HOME: join(fx.home, '.codex'), REM_REFLECT_STORE: fx.store, REM_SHIM_MTIME: String(SELF_MT),
+    CODEX_HOME: join(fx.home, '.codex'), SNO_PROFILE_DIR: join(fx.home, '.sno'), REM_REFLECT_STORE: fx.store, REM_SHIM_MTIME: String(SELF_MT),
     REM_OBSERVE_CAPTURE: fx.capture, REM_SNO_CAPTURE: join(fx.home, 'cloud-requests.jsonl') };
   delete env.REM_SELFTEST;
   delete env.CLAUDECODE;
@@ -89,7 +88,7 @@ function cli(fx, args, path, extra = {}) {
   return { code: result.status, out: `${result.stdout}${result.stderr}` };
 }
 
-// The `sno-observe append` rows captured since the previous call, as { event, fields }.
+// The `sno observe append` rows captured since the previous call, as { event, fields }.
 function reader(fx) {
   let seen = 0;
   return () => {
@@ -174,10 +173,10 @@ const afterRun3 = fresh();
 assert.equal(only(afterRun3, 'rsi.run')[0]?.trigger, 'manual', `--trigger defaults to manual: ${show(afterRun3)}`);
 for (const id of [RUN1, RUN2, RUN3]) {
   const log = readFileSync(join(a.store, 'staging', id, 'run.log'), 'utf8');
-  assert.doesNotMatch(log, /not found/, `a run with sno-observe on PATH logs no missing program (${id})`);
+  assert.doesNotMatch(log, /not found/, `a run with sno on PATH logs no missing program (${id})`);
 }
 
-// --- with `sno-observe` exiting 2 for rsi.run -----------------------------------------------------
+// --- with `sno observe append` exiting 2 for rsi.run -----------------------------------------------------
 const d = fixture();
 const runD = cli(d, ['run', '--trigger', 'timer', '--now', DAY1], withSno, { REM_OBSERVE_FAIL: 'rsi.run' });
 const e = fixture();
@@ -197,8 +196,9 @@ const b = fixture();
 const runB = cli(b, ['run', '--trigger', 'timer', '--now', DAY1], noSno);
 assert.equal(runB.code, NO_SNO_RUN_EXIT, `run without sno exits as before the emitters (${NO_SNO_RUN_EXIT}):\n${runB.out}`);
 const logB = readFileSync(join(b.store, 'staging', RUN1, 'run.log'), 'utf8');
-assert.equal(logB.split('\n').filter(line => line.includes('sno-observe: not found')).length, 1,
-  `run.log carries one "sno-observe: not found" line:\n${logB}`);
+// A failed upload no longer stops the run, so both the rsi.proposal and the rsi.run rows reach the missing program.
+assert.equal(logB.split('\n').filter(line => line.includes('sno: not found')).length, 2,
+  `run.log carries one "sno: not found" line per emitted row:\n${logB}`);
 
 const c = fixture();
 const runC = cli(c, ['run', '--trigger', 'timer', '--now', DAY1], withSno);

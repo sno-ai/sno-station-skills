@@ -364,7 +364,7 @@ Then report the result with the same card path:
 Use --state failed if the work failed. A question asking for information takes
 reply without --state. Do not dismiss an actionable question or decision.
 For later supervision, arm a heartbeat that rings your own seat, then end the turn:
-  heartbeat --interval 10m --label pl-${callsign} -- sno reach ring ${addr}
+  sno heartbeat --interval 10m --label pl-${callsign} -- sno reach ring ${addr}
 If Reach reports a delivered card with wake exit 5 or 6, inspect the recipient
 seat; do not resend the card.
 EOF

@@ -179,8 +179,8 @@ def check():
         require(r"`sno reach wait[^`]*--reply-to <B-card-id>[^`]*--from <B>[^`]*--timeout[^`]*`", steps["8"], "terminal wait selects receiver B")
         require(r"direct owner work.*?destination session; no artificial.*?mailbox terminal reply", steps["8"], "card-free result")
         require(r"Sender gone.*?already stopped.*?no A to release.*?When the sender is gone", body, "sender-gone entry shape")
-        require(r"handoff-checkpoint --verify <record>.*?`MATCH`.*?`DRIFT`.*?Done is finished: do not redo it", body, "sender-gone receiver verifies and does not redo")
-        require(r"`handoff-checkpoint <file>`.*?Keep\s+the file outside\s+the checkout", body, "progress record command and location")
+        require(r"sno handoff-checkpoint --verify <record>.*?`MATCH`.*?`DRIFT`.*?Done is finished: do not redo it", body, "sender-gone receiver verifies and does not redo")
+        require(r"`sno handoff-checkpoint <file>`.*?Keep\s+the file outside\s+the checkout", body, "progress record command and location")
         for heading in ("Short launcher", "Release message"):
             template = re.search(rf"^## {heading}\n\n```text\n(.*?)\n```", body, re.M | re.S)
             assert template, f"missing receiver template: {heading}"

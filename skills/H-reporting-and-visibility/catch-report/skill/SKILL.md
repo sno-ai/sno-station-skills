@@ -10,12 +10,12 @@ requires:
 
 # catch-report
 
-The product claim is two brains: one does the work, another checks it. `catch-report` puts numbers on that
+The product claim is two brains: one does the work, another checks it. `sno catch-report` puts numbers on that
 claim from records already on this machine. It changes nothing.
 
 - **Mutual review** is every review the `peer-review` skill recorded: a different model read the work and
-  reported problems. `catch-report run` prints those numbers.
-- **Self-check** is an agent finding its own error inside one conversation. `catch-report self` reads the
+  reported problems. `sno catch-report run` prints those numbers.
+- **Self-check** is an agent finding its own error inside one conversation. `sno catch-report self` reads the
   agents' own conversations (`~/.claude/projects`, `~/.codex/sessions`), picks the moments where an agent
   reacted to a failing command or test, or admitted a mistake, and asks that agent's own model (claude
   judges claude conversations, codex judges codex conversations) whether the agent found the error itself or
@@ -26,7 +26,7 @@ line, logged in.
 
 ## Use
 
-1. To show the user what the two brains caught, run `catch-report brief --since 7d` (or `12h`, `30m`, `30d`, or a
+1. To show the user what the two brains caught, run `sno catch-report brief --since 7d` (or `12h`, `30m`, `30d`, or a
    date). It measures both and prints one page: a headline with the problems the second model caught and the moments in which the agents caught their own mistakes (kept apart, never added together), the second brain's
    numbers with its biggest catches quoted by title, the agents' own catches in their own words, and how to read
    the numbers. Tell the user first that the self-check part sends short excerpts of their conversations to their
@@ -40,9 +40,9 @@ line, logged in.
    is an estimate from a sample when there are more moments than `--limit`, and only sees errors an agent said
    out loud within ten steps of a failure or in a known admission phrase (English and Chinese); quiet fixes are
    not seen.
-4. For the details behind a number: `catch-report run` prints the review records (reviews started, finished,
+4. For the details behind a number: `sno catch-report run` prints the review records (reviews started, finished,
    refused and never finished; per reviewer model the high and medium findings, `fix-now` and `debt`; verdicts;
-   the five reviews with the most `fix-now`; findings the owner has ruled on), and `catch-report self --list`
+   the five reviews with the most `fix-now`; findings the owner has ruled on), and `sno catch-report self --list`
    prints each self-check moment with the model's verdict. Both take `--stats FILE` and `--findings FILE` for
    records kept elsewhere. The records are `~/.local/state/codex-review-stats.jsonl` and
    `~/.local/state/codex-reviews/findings.jsonl`.

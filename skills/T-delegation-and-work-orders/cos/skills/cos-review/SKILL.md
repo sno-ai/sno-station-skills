@@ -76,7 +76,7 @@ Then the taxonomy. These are the four ways a night goes wrong, and three of
 them look green from inside:
 
 1. **Under-delivery.** Read each charter's Proof table and success checks (run
-   `deliver-proof check <charter>` when installed; read its output, not only its exit
+   `sno deliver-proof check <charter>` when installed; read its output, not only its exit
    status) and diff the checks and deliverables against what actually landed. "Tests
    green" is not the check; the charter's numbered success checks are. A close that quietly
    dropped an item is the most common one.

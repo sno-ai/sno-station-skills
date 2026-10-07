@@ -14,11 +14,11 @@ set -Eeuo pipefail
 usage() {
   local status="${1:-2}"
   cat >&"$((status == 0 ? 1 : 2))" <<'USAGE'
-usage: catch-report run  [--since 7d|12h|30m|<date>] [--stats FILE] [--findings FILE]
-       catch-report self  [--since 7d|12h|30m|<date>] [--limit N] [--agent claude|codex|both]
-                          [--claude-dir DIR] [--codex-dir DIR] [--stats FILE] [--list]
-       catch-report brief [--since 7d|12h|30m|<date>] [--limit N] [--agent claude|codex|both]
-                          [--claude-dir DIR] [--codex-dir DIR] [--stats FILE] [--findings FILE]
+usage: sno catch-report run  [--since 7d|12h|30m|<date>] [--stats FILE] [--findings FILE]
+       sno catch-report self  [--since 7d|12h|30m|<date>] [--limit N] [--agent claude|codex|both]
+                              [--claude-dir DIR] [--codex-dir DIR] [--stats FILE] [--list]
+       sno catch-report brief [--since 7d|12h|30m|<date>] [--limit N] [--agent claude|codex|both]
+                              [--claude-dir DIR] [--codex-dir DIR] [--stats FILE] [--findings FILE]
 run   reviews started, finished, refused and never finished; mutual-review findings per reviewer model; verdicts;
       findings the owner has ruled on; the five reviews with the most fix-now.
 self  finds the moments where an agent admitted its own error in its own conversation, asks that agent's own
@@ -83,7 +83,7 @@ if [[ "$mode" == run ]]; then
     read -r reviews fixnow high medium <<<"$totals"
     printf 'Two brains (who found the problems):\n'
     printf '  Mutual review (the other model checks the work; all peer-review records): reviews %s, fix-now %s, high %s, medium %s\n' "$reviews" "$fixnow" "$high" "$medium"
-    printf '  Self-check (an agent finds its own error in its own conversation): not measured by run; use: catch-report self --since %s\n' "$SINCE"
+    printf '  Self-check (an agent finds its own error in its own conversation): not measured by run; use: sno catch-report self --since %s\n' "$SINCE"
     printf 'Mutual review found %s problems that had to be fixed now and %s high-severity findings.\n' "$fixnow" "$high"
   fi
   if [[ -r "$STATS" ]]; then
@@ -124,7 +124,7 @@ if [[ "$mode" == run ]]; then
   else
     printf 'not read: %s -> run a review with the peer-review skill first, or pass --findings FILE\n' "$FINDINGS"
   fi
-  printf 'These records do not say who wrote the code under review, how many bugs an agent found and fixed in its own work before any review (catch-report self measures that), or whether an undecided finding is real.\n'
+  printf 'These records do not say who wrote the code under review, how many bugs an agent found and fixed in its own work before any review (sno catch-report self measures that), or whether an undecided finding is real.\n'
   (( readable == 1 ))
   exit $?
 fi
@@ -381,6 +381,6 @@ if [[ -r "$FINDINGS" ]]; then
 fi
 printf '\n## How to read this\n'
 printf -- "- Must-fix means the reviewing model's own label for a problem caused by the change that had to be fixed; it is not a count of bugs that reached users.\n"
-printf -- '- The self-check counts moments, not distinct bugs: one mistake can show up in several things an agent said. It counts what an agent said out loud after a failure or in a known admission, as judged by its own model; quiet fixes are not seen and the model can be wrong. Check any number with: catch-report self --since %s --list\n' "$SINCE"
+printf -- '- The self-check counts moments, not distinct bugs: one mistake can show up in several things an agent said. It counts what an agent said out loud after a failure or in a known admission, as judged by its own model; quiet fixes are not seen and the model can be wrong. Check any number with: sno catch-report self --since %s --list\n' "$SINCE"
 printf -- '- The records do not say who wrote the code; %s of %s new findings are still undecided, so nobody has ruled them real or false.\n' "$unrul" "$fnew"
 printf 'Read from %s conversations and %s reviews on this machine.\n' "$((sessions_claude + sessions_codex))" "${reviews:-0}"

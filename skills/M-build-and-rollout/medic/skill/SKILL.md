@@ -12,7 +12,7 @@ requires:
 
 # medic
 
-`medic run` looks at the agent team on this machine and prints one line per check. It reads and
+`sno medic run` looks at the agent team on this machine and prints one line per check. It reads and
 reports; it never installs, repairs, starts, stops or spends anything.
 
 ```
@@ -26,25 +26,25 @@ MEDIC ok=N warn=N fail=N
 installed, Reach is broken). `WARN` means it works worse than it should. Exit status is 0 when there is
 no `FAIL`, 1 otherwise, 2 for a wrong command line.
 
-Prerequisites: bash 4+, GNU coreutils and jq. `medic` with no arguments, or `--help`, prints the usage.
+Prerequisites: bash 4+, GNU coreutils and jq. `sno medic` with no arguments, or `--help`, prints the usage.
 
 ## Use
 
-1. Run `medic run`. It takes about ten seconds because it asks `sno doctor` and reads both quotas.
+1. Run `sno medic run`. It takes about ten seconds because it asks `sno doctor` and reads both quotas.
 2. Tell the owner the result in plain words: the counts, then each `WARN` and `FAIL` line with its fix.
    Do not paste the whole output when everything is `OK`; one sentence says so.
 3. Run a fix only when the owner asks for it. Installing and updating change the machine, and one
    warning is often not worth a fix (for example no heartbeat when nothing long is running).
-4. After a fix, run `medic run` again and read the same line: it must now say `OK`.
+4. After a fix, run `sno medic run` again and read the same line: it must now say `OK`.
 
 ## What each check reads
 
 | Check | Looks at | Common fix |
 |---|---|---|
-| `tools` | `sno`, `jq`, `tmux`, `git`, `heartbeat`, `subscription-quota-check` are on PATH | install the named program |
+| `tools` | `sno`, `jq`, `tmux`, `git` are on PATH, and `sno heartbeat` and `sno subscription-quota-check` run | install the named program |
 | `agent-cli` | `claude` or `codex` is on PATH | install one of them |
 | `skills` | the six core skills (`reach`, `heartbeat`, `join-talk`, `handoff`, `deliver`, `charter`) exist where each installed agent reads skills | reinstall the skills |
-| `commands` | `deliver-proof`, `handoff-checkpoint`, `rotate-agent-resume` and `rem-reflect` are installed and answer `--help` | reinstall the skills |
+| `commands` | `sno deliver-proof`, `sno handoff-checkpoint`, `sno rotate-agent-resume` and `sno rem-reflect` answer `--help` | reinstall the skills |
 | `hooks` | `sno doctor` reports hooks configured (and trusted, for codex) for each installed agent | reinstall the skills |
 | `reach` | `sno doctor` reports Reach as ok | the fix `sno doctor` names |
 | `skill-files` | every installed skill file passes `sno doctor` | update the skills |
@@ -58,6 +58,6 @@ missing`; fix the `tools` line first.
 
 ## Limits
 
-`medic` does not prove that an agent can answer a prompt or that a seat delivers a message: for a live
+`sno medic` does not prove that an agent can answer a prompt or that a seat delivers a message: for a live
 receiver test before a vendor switch use `rotate-agent-preflight` (the `rotate-agent` skill), and for a
 single unit's behaviour use that unit's own self-test.

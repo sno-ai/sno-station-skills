@@ -43,7 +43,7 @@ test('recall prints the fixed heading, one index line per in-scope accepted less
   assert.equal(r.code, 0);
   assert.equal(r.lines[0], "Lessons from this machine's own sessions", 'the fixed heading is first when armed');
   assert.equal(r.lines[1], 'L-a · general · trigger L-a — advice L-a', 'one index line with the trigger and the advice');
-  assert.equal(r.lines[2], 'Read one in full with: rem-reflect lesson <lesson_id> --session S1 --agent claude-code --cwd ' + checkout);
+  assert.equal(r.lines[2], 'Read one in full with: sno rem-reflect lesson <lesson_id> --session S1 --agent claude-code --cwd ' + checkout);
   assert.equal(r.lines.length, 3, 'nothing else');
   // one shown line appended
   const usage = readFileSync(join(store, 'ledger/usage.jsonl'), 'utf8').trim().split('\n');
@@ -178,12 +178,12 @@ test('verified listed lessons are recalled without the owner, in their layer, an
   }
 });
 
-test('the not-armed notice precedes the index only when heartbeat --list shows no rem-reflect label', () => {
+test('the not-armed notice precedes the index only when sno heartbeat --list shows no rem-reflect label', () => {
   const checkout = fixtureCheckout();
   const config = fixtureConfig({ claude_root: tmp('c'), codex_root: tmp('x') });
   const store = seed(config, [lesson('L-a')]);
   const off = recall(store, 'claude-code', { session_id: 'S1', cwd: checkout }, NOW, 'nothing here');
-  assert.match(off.lines[0], /daily run not armed since .*; arm with: heartbeat --interval 24h/);
+  assert.match(off.lines[0], /daily run not armed since .*; arm with: sno heartbeat --interval 24h/);
   const on = recall(store, 'claude-code', { session_id: 'S1', cwd: checkout }, NOW, ARMED);
   assert.doesNotMatch(on.lines.join('\n'), /not armed/);
 });

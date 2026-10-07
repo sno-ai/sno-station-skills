@@ -5,7 +5,7 @@ UserPromptSubmit hook; phrased as facts on purpose). Full law: this skill's SKIL
   the PL disposes. Default in a disagreement: the PL wins.
 - Every turn ends with a heartbeat-ring armed and nothing ever blocks; the session never
   assumes it wakes itself:
-  heartbeat --interval 10m --label cos-<name> -- sno reach ring <OWN-ADDR>
+  sno heartbeat --interval 10m --label cos-<name> -- sno reach ring <OWN-ADDR>
 - Everything rides `sno reach` — never ring a terminal by hand — and sent is never
   received; disk is the proof:
   sno reach inbox --as <addr>                    # read

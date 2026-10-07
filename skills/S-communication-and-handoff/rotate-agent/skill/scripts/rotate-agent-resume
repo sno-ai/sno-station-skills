@@ -6,20 +6,20 @@
 # `RESUMED seat=<address> verify=MATCH|DRIFT`. A label resumes once: the lock is
 # ${XDG_STATE_HOME:-$HOME/.local/state}/rotate-agent/<work>.resume, kept whenever a receiver exists.
 # Exit 0 resumed (or usage printed for no arguments / --help), 1 failed, 2 bad usage. Needs sno (Reach), jq, tmux and the handoff skill's
-# handoff-checkpoint (on PATH, or named with --checkpoint-cmd).
+# `sno handoff-checkpoint` (or a command named with --checkpoint-cmd).
 set -Eeuo pipefail
 
 usage() {
   local status="${1:-2}"
   cat >&"$((status == 0 ? 1 : 2))" <<'USAGE'
-usage: rotate-agent-resume --to codex|claude --cwd <checkout> --checkpoint <progress-record>
-                           --work <label> [--report-to <seat-address>] [--checkpoint-cmd <cmd>]
+usage: sno rotate-agent-resume --to codex|claude --cwd <checkout> --checkpoint <progress-record>
+                               --work <label> [--report-to <seat-address>] [--checkpoint-cmd <cmd>]
 prints one line per step: OK <step> | FAIL <step>: <what> -> <what to do> | RESUMED seat=<address> verify=MATCH|DRIFT
 USAGE
   exit "$status"
 }
 
-TO="" CWD="" CHECKPOINT="" WORK="" REPORT_TO="" CKPT_CMD="handoff-checkpoint"
+TO="" CWD="" CHECKPOINT="" WORK="" REPORT_TO="" CKPT_CMD=(sno handoff-checkpoint)
 (( $# > 0 )) || usage 0
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -28,7 +28,7 @@ while [[ $# -gt 0 ]]; do
     --checkpoint) CHECKPOINT="${2:-}"; shift 2 ;;
     --work) WORK="${2:-}"; shift 2 ;;
     --report-to) REPORT_TO="${2:-}"; shift 2 ;;
-    --checkpoint-cmd) CKPT_CMD="${2:-}"; shift 2 ;;
+    --checkpoint-cmd) CKPT_CMD=("${2:-}"); shift 2 ;;
     -h|--help) usage 0 ;;
     *) printf 'rotate-agent-resume: unknown option %s\n' "$1" >&2; usage ;;
   esac
@@ -60,13 +60,13 @@ cleanup() {
 trap cleanup EXIT
 
 # 1. Tools, the checkout, and a progress record the checkout can be compared with.
-for tool in sno jq tmux timeout "$CKPT_CMD"; do
-  command -v "$tool" >/dev/null || fail tools "$tool is not on PATH" "install it (sno setup installs sno; the handoff skill ships handoff-checkpoint)"
+for tool in sno jq tmux timeout "${CKPT_CMD[0]}"; do
+  command -v "$tool" >/dev/null || fail tools "$tool is not on PATH" "install it (sno setup installs sno, with handoff-checkpoint as a sno subcommand)"
 done
 [[ -d "$CWD" ]] && git -C "$CWD" rev-parse --show-toplevel >/dev/null 2>&1 || fail checkout "$CWD is not a git work tree" "pass the checkout the working agent used"
 verify_status=0
-verify_out="$("$CKPT_CMD" --verify "$CHECKPOINT" 2>&1)" || verify_status=$?
-(( verify_status <= 1 )) || fail checkpoint "${verify_out%%$'\n'*}" "point --checkpoint at a record made by handoff-checkpoint"
+verify_out="$("${CKPT_CMD[@]}" --verify "$CHECKPOINT" 2>&1)" || verify_status=$?
+(( verify_status <= 1 )) || fail checkpoint "${verify_out%%$'\n'*}" "point --checkpoint at a record made by sno handoff-checkpoint"
 verify="MATCH"
 (( verify_status == 0 )) || verify="DRIFT"
 # The record belongs to one checkout; the receiver must work in that one, not in another working copy.
@@ -114,7 +114,7 @@ Progress record: $CHECKPOINT
 $verify_out
    If it shows DRIFT, the previous agent worked after its last checkpoint: read those commits and files first (git log, git diff), decide what they finished, and add that to Done before you continue.
 3. Print one line, on its own: RESUME_ACK $nonce
-4. Continue from Next in this checkout. After every finished task run: $CKPT_CMD $CHECKPOINT   and update Done and Next in the record.
+4. Continue from Next in this checkout. After every finished task run: ${CKPT_CMD[*]} $CHECKPOINT   and update Done and Next in the record.
 5. When every task is done print DONE_$WORK on its own line. If a task needs the owner, print BLOCKED_$WORK <reason> on its own line instead; never print DONE_$WORK while a task waits on the owner."
 [[ -z "$REPORT_TO" ]] || prompt+=$'\n'"Report the final result to $REPORT_TO."
 # Codex takes the Enter that follows a long pasted prompt as part of the paste, so the prompt can sit unsent

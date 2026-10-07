@@ -64,10 +64,10 @@ it against disk, and keeping every PL unstuck without waking the owner.
 first, plain language. Agent-facing text (cards, dispatch text, documents, commits) uses the
 project's working language.**
 
-**Use `report-time` for every clock time the owner reads, never mental arithmetic.**
+**Use `sno report-time` for every clock time the owner reads, never mental arithmetic.**
 
-    report-time                                    # local time and UTC
-    report-time --pid <pid> [--expect-wall <seconds>]
+    sno report-time                                    # local time and UTC
+    sno report-time --pid <pid> [--expect-wall <seconds>]
 
 **A COMPLETION DATE IS HOURS ÷ 24, NEVER HOURS ÷ A WORKING DAY**. Agents run continuously: no weekend, holiday, or working
 week. Every date handed to the owner states
@@ -86,14 +86,14 @@ numbers never change.
 Between turns you are STOPPED, not running; a turn that ends with no heartbeat armed
 ends your supervision, and the lane goes dark with no signal that it did. Nothing may block
 (no waiting command, no polling loop): a supervisor ends its turn. Last act of every turn,
-unless `heartbeat --list` shows yours running:
-`heartbeat --interval 10m --label cos-<name> -- sno reach ring <OWN-ADDR>`
+unless `sno heartbeat --list` shows yours running:
+`sno heartbeat --interval 10m --label cos-<name> -- sno reach ring <OWN-ADDR>`
 (`bash "${COS_SKILL_DIR}/scripts/cos-claim.sh" register [<seat-letter>]` prints OWN-ADDR).
 Intervals: **declared night shift — 10m unless the owner names another,
 never reasoned upward** · launch window or active decision phase ~15 min · steady state
 20–30 min · everything waits on the owner 45–60 min. AND read `sno reach inbox --as <OWN-ADDR>` on every tick — the ring is a
 hint, the inbox is the truth. AND watch silence mechanically: a stopped executor produces no
-signal, so use `heartbeat --interval 1m --label sentinel-<executor> -- bash "${COS_SKILL_DIR}/scripts/exec-sentinel.sh" --log <executor-log> --repo <worktree> --pl <PL-ADDR> --cos <OWN-ADDR> --tick-secs 60`; it rings you when
+signal, so use `sno heartbeat --interval 1m --label sentinel-<executor> -- bash "${COS_SKILL_DIR}/scripts/exec-sentinel.sh" --log <executor-log> --repo <worktree> --pl <PL-ADDR> --cos <OWN-ADDR> --tick-secs 60`; it rings you when
 it goes quiet — a stall test compares DELTAS only; an absolute count in the condition
 switches the alarm off exactly when there is something to protect. Sign-on is wide on
 entry, strict on exit: repair or warn on missing state, refuse startup only for unsafe
@@ -405,7 +405,7 @@ single-lane repo `pl.<repo>@host`. Full text: PART 2 §Scope is a roster.
 ## Prerequisites and terms
 
 COS and the PL skills need Linux, `tmux` (each COS and PL window is a tmux pane; Orca, a terminal app with an `orca` CLI, also works if installed), `flock`, `jq`, `python3`, `pstree` and `pgrep`,
-and the `sno`, `heartbeat`, and `report-time` programs. `systemd` is needed only for the turn-lock
+and the `sno` program with its `sno heartbeat` and `sno report-time` subcommands. `systemd` is needed only for the turn-lock
 signal (§Liveness); without it judge liveness from the seat and inbox. The `pl` skill must
 be installed beside this one; COS runs its scripts through `PL_SKILL_DIR`. The scripts stop
 with one clear message when a prerequisite is missing.
@@ -653,12 +653,12 @@ whether the mail can land at all:
 ### The reciprocal duty — required of every PL COS opens
 
 A PL ends every turn, however that turn ended, with its own heartbeat-ring armed (skip it
-only when `heartbeat --list` shows the label running); nothing blocks:
+only when `sno heartbeat --list` shows the label running); nothing blocks:
 
 ```bash
 # <ADDR> is the exact seat address from the registry, including its @host.
 # Substitute it before pasting; short role or lane aliases are not addresses.
-heartbeat --interval 10m --label pl-<name> -- sno reach ring <ADDR>
+sno heartbeat --interval 10m --label pl-<name> -- sno reach ring <ADDR>
 ```
 
 The ring starts the PL's next turn, which checks its queue and executors and re-arms.
@@ -997,7 +997,7 @@ against a real, parseable tree, is never caught by a rule keyed on zero.
 
 The three liveness queries below stay because they are measured and correct, not because
 they are the rule. A query shaped like
-`ps … | grep 'sno-reach' | grep 'ring pl'` or `pgrep -cf 'codex exec'` is wrong
+`ps … | grep 'sno reach' | grep 'ring pl'` or `pgrep -cf 'codex exec'` is wrong
 twice over: the search string is part of the searching process's own command line, so
 **the search finds itself**; and an executor's dispatch pastes the watch command in as
 literal prose, so a parked executor advertises a heartbeat that does not exist. Numbers
@@ -1006,7 +1006,7 @@ from such a query reach the owner while they are deciding on them.
 What actually works, and what a liveness query must use: for the turn lock, find processes
 whose `comm` is exactly `systemd-inhibit` and read the **parent pid** — never grep the
 `--why` text. For executors, test argument **position** (`$3 ~ /codex$/ && $4=="exec"`), not
-a substring. For heartbeats, read `heartbeat --list` (machine-wide, yours marked), never a process
+a substring. For heartbeats, read `sno heartbeat --list` (machine-wide, yours marked), never a process
 grep. `cos-roster.sh` already does the process checks correctly; run it instead of retyping a grep.
 
 **And when an instrument is found invalid, every conclusion it supported returns to
@@ -1062,9 +1062,9 @@ Sessions are disposable; disk is the memory. Before any new work:
    reported and repaired without blocking independently verified task closure or new
    authorized work. Never interpret unreadable remaining work as an empty list.
 5. **Prove a future wake exists — by checking the mechanism, not a note.**
-   `heartbeat --list` must show `cos-<name>` running with your mark. Missing means no
+   `sno heartbeat --list` must show `cos-<name>` running with your mark. Missing means no
    future wake exists: run `cos-claim.sh register`, then arm
-   `heartbeat --interval 10m --label cos-<name> -- sno reach ring <OWN-ADDR>` before
+   `sno heartbeat --interval 10m --label cos-<name> -- sno reach ring <OWN-ADDR>` before
    anything else. A COS that resumes work without doing this is one crash away from the
    silent death its own mail law describes — and nothing else on the machine will notice.
 6. Only then resume.
@@ -1086,7 +1086,7 @@ proves it mid-turn. Reopening over it is the larger mistake.
 Order of evidence:
 
 1. **Turn lock AND heartbeat-ring, read as one pair** — never the lock alone. Lock =
-   a turn is executing; no lock plus its heartbeat-ring armed (`heartbeat --list` shows
+   a turn is executing; no lock plus its heartbeat-ring armed (`sno heartbeat --list` shows
    its label) is healthy between ticks — the ring starts the next turn; no lock and no
    heartbeat-ring means the session is not reachable on schedule, which is itself the
    alarm. Read the lock from the process list rather than `systemd-inhibit --list`,

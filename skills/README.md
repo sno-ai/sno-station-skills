@@ -21,17 +21,18 @@ Colleagues review each other's work, and nothing counts as done until it passes 
 Get the team set up on any workstation with one step, build what the work needs, then roll it out to every machine.
 
 - [medic](M-build-and-rollout/medic/) — check that the agent team on this machine can work, in plain lines, and repair nothing
+- [sno-cli](M-build-and-rollout/sno-cli/) — teach an agent to operate the `sno` command line: conventions, task map and recipes; the exact flags come from the installed binary
 - `e2e-environment-preflight` — check the environment before an end-to-end run (ships inside the [e2e](J-peer-review-and-audit/e2e/) unit)
 
 ## S · Communication & Handoff
 
 People talk through a shared inbox, and when one is out the other takes over with full context.
 
-- [handoff](S-communication-and-handoff/handoff/) — hand a task to another agent with full context, or resume from a progress record when the sender is already gone (ships the `handoff-checkpoint` command)
+- [handoff](S-communication-and-handoff/handoff/) — hand a task to another agent with full context, or resume from a progress record when the sender is already gone (ships the `sno handoff-checkpoint` command)
 - [heartbeat](S-communication-and-handoff/heartbeat/) — recurring checks and completion watches
 - [join-talk](S-communication-and-handoff/join-talk/) — make a manually opened agent reachable
 - [reach](S-communication-and-handoff/reach/) — agent-to-agent cards, rings and calls
-- [rotate-agent](S-communication-and-handoff/rotate-agent/) — fail over to another vendor's agent when quota runs out, or start a replacement from a progress record (ships the `rotate-agent-resume` command)
+- [rotate-agent](S-communication-and-handoff/rotate-agent/) — fail over to another vendor's agent when quota runs out, or start a replacement from a progress record (ships the `sno rotate-agent-resume` command)
 - [subscription-quota-check](S-communication-and-handoff/subscription-quota-check/) — read remaining subscription quota without spending it
 
 ## H · Reporting & Visibility

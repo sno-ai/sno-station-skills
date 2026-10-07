@@ -54,13 +54,13 @@ function seedStore(): { store: string; checkout: string } {
   return { store, checkout };
 }
 
-// A `rem-reflect` executable that runs the source against the given store; the hook command resolves
-// to it through PATH, exactly as a deployed `rem-reflect` would (deployment is out of scope).
-function remReflectShim(store: string, name = 'rem-reflect'): string {
+// A `sno` executable whose `rem-reflect` subcommand runs the source against the given store; the hook command resolves
+// to it through PATH, exactly as a deployed `sno rem-reflect` would (deployment is out of scope).
+function remReflectShim(store: string, name = 'sno'): string {
   const dir = tmp('shimbin');
   const p = join(dir, name);
   writeFileSync(p, ['#!/usr/bin/env bash',
-    `exec env REM_REFLECT_STORE=${JSON.stringify(store)} node --experimental-strip-types ${JSON.stringify(REMREFLECT)} "$@"`,
+    'shift', `exec env REM_REFLECT_STORE=${JSON.stringify(store)} node --experimental-strip-types ${JSON.stringify(REMREFLECT)} "$@"`,
   ].join('\n') + '\n');
   chmodSync(p, 0o755);
   return dir;
@@ -88,10 +88,10 @@ test('install-hooks prints SessionStart and first-message entries without writin
   const out = execFileSync(process.execPath, ['--experimental-strip-types', REMREFLECT, 'install-hooks', '--print'], { encoding: 'utf8' });
   assert.match(out, /~\/\.claude\/settings\.json/);
   assert.match(out, /~\/\.codex\/hooks\.json/);
-  assert.match(out, /"command": "rem-reflect recall --agent claude-code"/, 'the Claude entry runs recall with the agent kind');
-  assert.match(out, /"command": "rem-reflect recall --agent codex"/, 'the Codex entry runs recall with the agent kind (the nested command shape codex runs)');
-  assert.match(out, /"command": "rem-reflect recall --agent claude-code --first-message"/);
-  assert.match(out, /"command": "rem-reflect recall --agent codex --first-message"/);
+  assert.match(out, /"command": "sno rem-reflect recall --agent claude-code"/, 'the Claude entry runs recall with the agent kind');
+  assert.match(out, /"command": "sno rem-reflect recall --agent codex"/, 'the Codex entry runs recall with the agent kind (the nested command shape codex runs)');
+  assert.match(out, /"command": "sno rem-reflect recall --agent claude-code --first-message"/);
+  assert.match(out, /"command": "sno rem-reflect recall --agent codex --first-message"/);
   assert.doesNotMatch(out, /"SessionEnd"|"PreToolUse"/);
   // the program contains no write to settings.json or hooks.json (it only prints them)
   for (const f of readdirSync(SCRIPTS).filter(n => n.endsWith('.ts') && !n.endsWith('.test.ts') && n !== 'test-helpers.ts')) {
@@ -111,7 +111,7 @@ test('a real claude -p session runs the recall hook at session start (shown line
   assert.ok(existsSync(cred), 'the real Claude credential is present to seed the isolated home');
   copyFileSync(cred, join(iso, '.credentials.json'));
   chmodSync(join(iso, '.credentials.json'), 0o600);
-  writeFileSync(join(iso, 'settings.json'), JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'rem-reflect recall --agent claude-code' }] }] } }));
+  writeFileSync(join(iso, 'settings.json'), JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'sno rem-reflect recall --agent claude-code' }] }] } }));
 
   const env = { ...process.env, CLAUDE_CONFIG_DIR: iso, PATH: `${shimDir}:${process.env.PATH}` };
   execFileSync('claude', ['-p', PROMPT, '--model', CLAUDE_MODEL], { cwd: checkout, env, encoding: 'utf8', timeout: 180_000, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -136,7 +136,7 @@ test('a real codex exec runs the recall hook only with hook trust; no trust and 
   assert.ok(existsSync(auth), 'the real Codex auth is present to seed the isolated home');
   copyFileSync(auth, join(iso, 'auth.json'));
   chmodSync(join(iso, 'auth.json'), 0o600);
-  writeFileSync(join(iso, 'hooks.json'), JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'rem-reflect recall --agent codex' }] }] } }));
+  writeFileSync(join(iso, 'hooks.json'), JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'sno rem-reflect recall --agent codex' }] }] } }));
 
   const env = { ...process.env, CODEX_HOME: iso, PATH: `${shimDir}:${process.env.PATH}` };
   // The isolated home has no config.toml, so the explicit flag selects the sandbox mode.
@@ -163,7 +163,7 @@ test('a real codex exec runs the recall hook only with hook trust; no trust and 
   assert.equal(shownLines(store).length, 1, 'without hook trust the hook does not fire, so no new shown line is added');
 
   // planted defect: point the hook command at a missing binary -> the hook cannot run -> no new shown line.
-  writeFileSync(join(iso, 'hooks.json'), JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'rem-reflect-does-not-exist recall --agent codex' }] }] } }));
+  writeFileSync(join(iso, 'hooks.json'), JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'sno-does-not-exist rem-reflect recall --agent codex' }] }] } }));
   runCodex(trust);
   assert.equal(shownLines(store).length, 1, 'a missing hook binary cannot run recall, so no new shown line is added (planted defect)');
 });

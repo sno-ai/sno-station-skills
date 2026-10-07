@@ -7,7 +7,7 @@ import { readPages } from './pages.ts';
 import { commands } from './config.ts';
 import type { Config } from './config.ts';
 import {
-  hashListing, tmp, fixtureCheckout, fixtureConfig, makeStore, FixtureBackend,
+  hashListing, tmp, fixtureCheckout, fixtureConfig, makeStore, FixtureBackend, writeStationSettings,
   writeClaudeSession, claudeUser, claudeAssistant, writeCodexSession, codexMeta, codexUser, codexAssistant,
 } from './test-helpers.ts';
 
@@ -52,6 +52,10 @@ function cloudPageReply(t: import('node:test').TestContext): void {
   const originalPath = process.env.PATH;
   process.env.PATH = `${bin}:${originalPath ?? ''}`;
   t.after(() => { if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath; });
+  // Only the enhanced mode writes the cloud's pages into the local store.
+  const originalProfile = process.env.SNO_PROFILE_DIR;
+  process.env.SNO_PROFILE_DIR = writeStationSettings('rem-enhanced');
+  t.after(() => { if (originalProfile === undefined) delete process.env.SNO_PROFILE_DIR; else process.env.SNO_PROFILE_DIR = originalProfile; });
 }
 function reportOf(store: string): string {
   const runId = readdirSync(join(store, 'staging')).filter(n => /^\d/.test(n)).sort().pop()!;

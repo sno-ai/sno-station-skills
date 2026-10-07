@@ -1,0 +1,15 @@
+{
+  "unit": "sno-cli",
+  "category": "M",
+  "tier": "candidate",
+  "split": {},
+  "source": {
+    "repo": "sno-station-skills-core",
+    "commit": "52c902964b0173406f9328b9322b1a79df43dbcd",
+    "unit_tree_clean": true
+  },
+  "selftests_run": 1,
+  "contract_sha256": "5022662b4807e817533b5edc1700fb40e87deccaf47d25f82d941baeacf18b62",
+  "payload_sha256": "5d471d2bc860e7fb26454464ae455cab9f467e4ce1178db2647a0074ae10fd9d",
+  "published_at": "2026-10-07T19:54:10Z"
+}

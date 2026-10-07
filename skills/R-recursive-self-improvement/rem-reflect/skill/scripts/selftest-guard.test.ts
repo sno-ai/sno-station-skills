@@ -2,11 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { testTempRoot } from './test-helpers.ts';
 import { join } from 'node:path';
 
 test('self-test run refuses a missing store before reading sessions or invoking sno', t => {
-  const dir = mkdtempSync(join(tmpdir(), 'rem-selftest-guard-'));
+  const dir = mkdtempSync(join(testTempRoot, 'rem-selftest-guard-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const home = join(dir, 'home');
   const bin = join(dir, 'bin');
@@ -26,7 +26,7 @@ test('self-test run refuses a missing store before reading sessions or invoking 
     R2: { 'local-first': 'off' }, R3: { 'local-first': 'off' }, R4: { 'local-first': 'off' },
   } }));
   const marker = join(dir, 'sno-called');
-  for (const name of ['sno', 'sno-observe', 'claude', 'codex', 'heartbeat']) {
+  for (const name of ['sno', 'claude', 'codex']) {
     const path = join(bin, name);
     writeFileSync(path, '#!/bin/sh\nprintf "%s\\n" "$0 $*" >> "$REM_TEST_MARKER"\nexit 2\n');
     chmodSync(path, 0o755);
@@ -58,7 +58,7 @@ test('self-test run refuses a missing store before reading sessions or invoking 
       `${name}: the process must not open either session root`);
     assert.equal(calls.some(line => line.includes('connect(') && /sa_family=AF_INET6?/.test(line)), false,
       `${name}: the process must not open a network connection`);
-    assert.equal(calls.some(line => /execve\("[^"]*\/(?:sno|sno-observe|claude|codex)"/.test(line)), false,
+    assert.equal(calls.some(line => /execve\("[^"]*\/(?:sno|claude|codex)"/.test(line)), false,
       `${name}: the process must not invoke an external client`);
     assert.equal(existsSync(marker), false, `${name}: the process must not invoke sno or another external client`);
     assert.notEqual(result.status, 0, `${name}: a missing self-test store must fail`);

@@ -17,7 +17,7 @@ rules = {
     "cannot read prints and continues": "the rest of the page still prints",
     "changes nothing but its readings": "except its own list of quota readings, and Reach, which may note that it has seen the cards",
     "quota shows usage not spend": "a reading shows usage now, not spend",
-    "mark before leaving": "away-brief mark",
+    "mark before leaving": "sno away-brief mark",
     "sections keep their own share": "and N more not shown",
     "no invented work": "Do not add work that is not on the page",
     "limits of done": "Work that was never committed or recorded does not appear",

@@ -18,7 +18,9 @@ export const paths = {
 };
 // `cloudWaitMs`: how long one nightly upload waits for the cloud's answer, so a stalled cloud cannot hold
 // the run silently for as long as the scheduler allows.
-export const limits = { firstDays: 7, quietMinutes: 30, chunkCharacters: 40_000, cloudWaitMs: 6 * 3_600_000 };
+// `localSessionsPerHalf`: how many sessions per harness the Local First nightly run asks its own CLI about;
+// one agent call each, so a night with hundreds of eligible sessions cannot run for hours.
+export const limits = { firstDays: 7, quietMinutes: 30, chunkCharacters: 40_000, cloudWaitMs: 6 * 3_600_000, localSessionsPerHalf: 3 };
 export const readingLimits = { ledgerRows: 200 };
 export const sizeCaps = { skillMdLines: 30, descriptionChars: 200, reminderLines: 12 };
 export const reflectionFiles = {
@@ -26,7 +28,7 @@ export const reflectionFiles = {
   lessons: 'wiki/lessons.jsonl', usage: 'ledger/usage.jsonl', ledger: 'ledger/skill-impact.jsonl',
   labelerInput: 'labeler-input.json', labelerOutput: 'labeler-output.json',
   proposal: 'proposal.json', skillMd: 'SKILL.md', patch: 'patch.json', purpose: 'PURPOSE.md',
-  report: 'REPORT.md', runLog: 'run.log',
+  report: 'REPORT.md', runLog: 'run.log', localWriter: 'ledger/local-writer.jsonl',
 };
 export const commands = ['run', 'accept', 'reject', 'tbd', 'recall', 'lesson', 'status', 'install-hooks'];
 export const messages = {
@@ -34,7 +36,7 @@ export const messages = {
   noHeartbeat: 'no heartbeat',
   noTerminal: 'no terminal run',
   redacted: '[REDACTED]',
-  help: 'Usage: rem-reflect run [--now <timestamp>] [--trigger timer|manual]|accept|reject|tbd|recall [--first-message]|lesson|status|install-hooks',
+  help: 'Usage: sno rem-reflect run [--now <timestamp>] [--trigger timer|manual]|accept|reject|tbd|recall [--first-message]|lesson|status|install-hooks',
 };
 
 export function isObject(value: unknown): value is Record<string, unknown> {
@@ -46,12 +48,11 @@ export function storePath(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 export type StationCell = 'off' | 'host' | 'sno-gpu';
+export type StationMode = 'local-first' | 'agent-native' | 'rem-enhanced';
 export class SettingsUnavailable extends Error {}
 
-// Where one of this skill's model calls goes under the mode in the Sno Station settings file:
-// R2 labels sessions, R3 uploads them nightly, R4 looks up a lesson on the first prompt. Read on
-// every call, never cached; a missing file, mode, row or value throws and says which, with no default.
-export function stationCell(id: 'R2' | 'R3' | 'R4', env: NodeJS.ProcessEnv = process.env): StationCell {
+// Read the setup-owned settings on every call, with no default for a missing mode.
+export function readStationSettings(env: NodeJS.ProcessEnv = process.env): Record<string, unknown> & { mode: StationMode } {
   const path = join(env.SNO_PROFILE_DIR ?? join(homedir(), '.sno'), 'settings.json');
   const fail = (reason: string): never => { throw new SettingsUnavailable(`settings unavailable: ${path}: ${reason}; run sno setup`); };
   if (!existsSync(path)) return fail('file missing');
@@ -60,7 +61,16 @@ export function stationCell(id: 'R2' | 'R3' | 'R4', env: NodeJS.ProcessEnv = pro
   const file = isObject(settings) ? settings : {};
   const mode = file.mode;
   if (mode !== 'local-first' && mode !== 'agent-native' && mode !== 'rem-enhanced') return fail('mode is missing or unknown');
+  return { ...file, mode };
+}
+
+export function stationCell(id: 'R2' | 'R3' | 'R4' | 'R5', env: NodeJS.ProcessEnv = process.env): StationCell {
+  const path = join(env.SNO_PROFILE_DIR ?? join(homedir(), '.sno'), 'settings.json');
+  const fail = (reason: string): never => { throw new SettingsUnavailable(`settings unavailable: ${path}: ${reason}; run sno setup`); };
+  const file = readStationSettings(env);
+  const mode = file.mode;
   const row = isObject(file.modelCalls) ? file.modelCalls[id] : undefined;
+  if (id === 'R5' && row === undefined) return mode === 'local-first' ? 'host' : 'off';
   if (!isObject(row)) return fail(`modelCalls.${id} is missing`);
   const cell = row[mode];
   if (cell !== 'off' && cell !== 'host' && cell !== 'sno-gpu') return fail(`modelCalls.${id}.${mode} is not off, host or sno-gpu`);

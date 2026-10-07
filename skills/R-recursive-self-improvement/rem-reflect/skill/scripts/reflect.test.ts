@@ -29,7 +29,7 @@ test('a long trace gets one persisted keep decision on its own CLI', () => {
   assert.deepEqual(backend.calls.filter(call => call.kind === 'labeler').map(call => call.cli), ['codex']);
 });
 
-test('a failed cloud day retries the exact saved batch without repeating the local decision', t => {
+test('a failed upload preserves a successful day and the next day retries the saved batch without relabeling', t => {
   const bin = tmp('retry-bin');
   const script = join(bin, 'sno');
   const marker = join(bin, 'failed-once');
@@ -46,8 +46,8 @@ if (!fs.existsSync(${JSON.stringify(marker)})) {
   fs.writeFileSync(${JSON.stringify(marker)}, '1');
   console.error('temporary cloud outage'); process.exit(2);
 }
-fs.writeFileSync(${JSON.stringify(second)}, input);
 const batch = JSON.parse(input);
+if (batch.run_id === '20260908-0000') fs.writeFileSync(${JSON.stringify(second)}, input);
 console.log(JSON.stringify({schema_version:1,run_id:batch.run_id,history_acknowledged:true,history_links:[],
   halves:batch.halves.map(half=>({harness:half.harness,attention:[],pages:[],lessons:[],proposals:[],read_judgments:[],log_entry:'no supported change'}))}));
 `);
@@ -62,17 +62,23 @@ console.log(JSON.stringify({schema_version:1,run_id:batch.run_id,history_acknowl
   const today = new Date('2026-09-08T00:00:00Z');
   const firstBackend = new FixtureBackend();
   const failed = run(store, today, 'u', firstBackend);
-  assert.equal(failed.code, 1);
-  assert.equal(readState(store).last_terminal?.status, 'failed');
+  assert.equal(failed.code, 0);
+  assert.equal(readState(store).last_terminal?.status, 'success');
+  assert.match(failed.lines.join('\n'), /cloud run 20260908-0000 send failed: .*temporary cloud outage/);
+  const report = readFileSync(join(store, 'staging', '20260908-0000', 'REPORT.md'), 'utf8');
   assert.equal(firstBackend.calls.filter(call => call.kind === 'labeler').length, 1);
   assert.equal(existsSync(first), true);
 
   const secondBackend = new FixtureBackend();
-  const resumed = run(store, today, 'u', secondBackend);
+  const sameDay = run(store, today, 'u', secondBackend);
+  assert.match(sameDay.lines.join('\n'), /already succeeded/);
+  assert.equal(existsSync(second), false);
+  const resumed = run(store, new Date('2026-09-09T00:00:00Z'), 'u', secondBackend);
   assert.equal(resumed.code, 0, resumed.lines.join('\n'));
   assert.equal(secondBackend.calls.filter(call => call.kind === 'labeler').length, 0);
   assert.equal(readFileSync(second, 'utf8'), readFileSync(first, 'utf8'), 'the same persisted batch reached the cloud');
   assert.equal(JSON.parse(readFileSync(second, 'utf8')).halves[0].sessions.length, 1);
+  assert.equal(readFileSync(join(store, 'staging', '20260908-0000', 'REPORT.md'), 'utf8'), report);
 });
 
 test('eligible lessons show their advice and both accept commands, while no eligible lesson shows neither command', t => {
@@ -95,10 +101,10 @@ test('eligible lessons show their advice and both accept commands, while no elig
   }]);
   const report = reflect(store, config, '20260923-0000', new FixtureBackend(), [], new Date('2026-09-23T00:00:00Z')).report.join('\n');
   assert.match(report, /L-report: check the exact failure before retrying/);
-  assert.match(report, /rem-reflect accept L-report(?:\n|$)/);
-  assert.match(report, /rem-reflect accept L-report --all-projects/);
+  assert.match(report, /sno rem-reflect accept L-report(?:\n|$)/);
+  assert.match(report, /sno rem-reflect accept L-report --all-projects/);
 
   const empty = makeStore(config);
   const emptyReport = reflect(empty, config, '20260923-0100', new FixtureBackend(), [], new Date('2026-09-23T01:00:00Z')).report.join('\n');
-  assert.doesNotMatch(emptyReport, /rem-reflect accept/);
+  assert.doesNotMatch(emptyReport, /sno rem-reflect accept/);
 });

@@ -6,7 +6,7 @@
 # window it sends a card to the PL and COS Reach addresses.
 #
 # Run one tick per heartbeat; its interval must equal --tick-secs, for example:
-# heartbeat --interval 1m --label sentinel-<callsign> -- bash "${PL_SKILL_DIR}/scripts/exec-sentinel.sh" --log <spawn-log> --repo <worktree> --pl "$PL_ADDR" --cos "$COS_ADDR" --tick-secs 60
+# sno heartbeat --interval 1m --label sentinel-<callsign> -- bash "${PL_SKILL_DIR}/scripts/exec-sentinel.sh" --log <spawn-log> --repo <worktree> --pl "$PL_ADDR" --cos "$COS_ADDR" --tick-secs 60
 #
 # It watches a branch, not a journey: the commit counter is `git rev-list --count HEAD`
 # on the worktree, so any executor committing to that branch resets the stall, even if the

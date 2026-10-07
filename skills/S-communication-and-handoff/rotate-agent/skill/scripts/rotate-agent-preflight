@@ -16,14 +16,14 @@ USAGE
   exit 2
 }
 
-FROM="" TO="" CWD="" SENDER="" QUOTA_CMD="subscription-quota-check"
+FROM="" TO="" CWD="" SENDER="" QUOTA_CMD=(sno subscription-quota-check)
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --from) FROM="${2:-}"; shift 2 ;;
     --to) TO="${2:-}"; shift 2 ;;
     --cwd) CWD="${2:-}"; shift 2 ;;
     --sender) SENDER="${2:-}"; shift 2 ;;
-    --quota-cmd) QUOTA_CMD="${2:-}"; shift 2 ;;
+    --quota-cmd) QUOTA_CMD=("${2:-}"); shift 2 ;;
     -h|--help) usage ;;
     *) printf 'rotate-agent-preflight: unknown option %s\n' "$1" >&2; usage ;;
   esac
@@ -42,8 +42,8 @@ fail() { # check what what-to-do
 }
 
 # 1. Tools this skill and the handoff run on.
-for tool in "$QUOTA_CMD" jq tmux sno heartbeat; do
-  command -v "$tool" >/dev/null || fail tools "$tool is not on PATH" "install it (sno setup installs sno, heartbeat and subscription-quota-check)"
+for tool in "${QUOTA_CMD[0]}" jq tmux sno; do
+  command -v "$tool" >/dev/null || fail tools "$tool is not on PATH" "install it (sno setup installs sno, with heartbeat and subscription-quota-check as sno subcommands)"
 done
 version="$(sno reach --version 2>/dev/null || true)"
 [[ "$version" =~ ^([0-9]+)\. && ${BASH_REMATCH[1]} -ge 2 ]] || fail tools "sno reach --version printed '${version:-nothing}', need 2.0 or newer" "update Reach with sno setup"
@@ -65,7 +65,7 @@ fi
 # 4. Both quotas readable now; the receiver must have headroom or there is nobody to rotate to.
 read_verdict() {
   local out
-  out="$("$QUOTA_CMD" --vendor "$1" --json --quiet 2>/dev/null || true)"
+  out="$("${QUOTA_CMD[@]}" --vendor "$1" --json --quiet 2>/dev/null || true)"
   jq -r '.vendors[0].verdict // "unknown"' <<<"$out" 2>/dev/null || printf 'unknown\n'
 }
 verdict="$(read_verdict "$FROM")"

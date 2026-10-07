@@ -185,14 +185,14 @@ export function lessonDetail(store: string, lessonId: string, input: LessonInput
 // Print the SessionStart and UserPromptSubmit hook entries the owner installs by hand. The program never writes
 // ~/.claude/settings.json or ~/.codex/hooks.json itself.
 export function installHooksPrint(): CommandResult {
-  const claude = { hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'rem-reflect recall --agent claude-code' }] }],
-    UserPromptSubmit: [{ hooks: [{ type: 'command', command: 'rem-reflect recall --agent claude-code --first-message' }] }] } };
+  const claude = { hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'sno rem-reflect recall --agent claude-code' }] }],
+    UserPromptSubmit: [{ hooks: [{ type: 'command', command: 'sno rem-reflect recall --agent claude-code --first-message' }] }] } };
   // Codex reads the same nested `hooks: [{ type: command, command: <shell string> }]` shape as Claude
   // (a flat `{command: [argv]}` entry is not run; the nested command string
   // fires and receives the session JSON on stdin). Its SessionStart hook runs only after the owner
   // approves it once in an interactive session (hook trust).
-  const codex = { hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'rem-reflect recall --agent codex' }] }],
-    UserPromptSubmit: [{ hooks: [{ type: 'command', command: 'rem-reflect recall --agent codex --first-message' }] }] } };
+  const codex = { hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'sno rem-reflect recall --agent codex' }] }],
+    UserPromptSubmit: [{ hooks: [{ type: 'command', command: 'sno rem-reflect recall --agent codex --first-message' }] }] } };
   return { code: 0, lines: [
     '# ~/.claude/settings.json — merge these hooks:',
     JSON.stringify(claude, null, 2),

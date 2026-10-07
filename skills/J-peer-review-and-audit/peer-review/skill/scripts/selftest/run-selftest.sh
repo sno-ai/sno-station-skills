@@ -54,13 +54,25 @@ cat >/dev/null   # drain the piped prompt so the wrapper never blocks on write
 case "${STUB_MODE:-ok}" in
     ok)    [[ -n "$out" ]] && printf 'Verdict: approve\n\nFindings:\n- [high] [fix-now] stub finding (src/stub.ts:1-2, confidence 0.90)\n' > "$out"; exit 0 ;;
     clean) [[ -n "$out" ]] && printf 'Verdict: approve\n\nFindings: none\n' > "$out"; exit 0 ;;
+    debt)  [[ -n "$out" ]] && printf 'Verdict: approve\n\nFindings:\n- [medium] [debt] old issue (a.ts:3, confidence 0.50)\n' > "$out"; exit 0 ;;
     empty) [[ -n "$out" ]] && : > "$out"; exit 0 ;;          # clean exit, nothing written
     fail)  exit 3 ;;
     hang)  sleep 300 ;;                                       # never writes, never exits
 esac
 STUB
 chmod +x "$ROOT/bin/codex"
-export PATH="$ROOT/bin:$PATH"
+# Recording stand-in for `sno observe` (the real tool uploads); first on PATH for every case.
+mkdir -p "$ROOT/obsbin"
+cat > "$ROOT/obsbin/sno" <<'OBS'
+#!/usr/bin/env bash
+[[ "${1:-}" == observe ]] || exit 64
+shift
+printf '%s\n' "$*" >>"$OBSERVE_LOG"
+exit "${FAKE_OBSERVE_EXIT:-0}"
+OBS
+chmod +x "$ROOT/obsbin/sno"
+export OBSERVE_LOG="$ROOT/observe.log"; : > "$OBSERVE_LOG"
+export PATH="$ROOT/obsbin:$ROOT/bin:$PATH"
 
 # Everything the wrapper writes to is redirected into this test's own directory.
 # TMPDIR keeps its concurrency slots from taking or releasing a slot belonging to
@@ -87,7 +99,7 @@ run_review() {       # run the wrapper with a fresh ledger unless KEEP=1 is set
     CODEX_EFFORT=stub-effort \
     MAX_RETRIES=0 POLL_SECS=1 PROGRESS_SECS=1000 BACKOFF_BASE_SECS=1 \
     STALL_SECS="${STALL_SECS_OVERRIDE:-600}" TIMEOUT_SECS="${TIMEOUT_SECS_OVERRIDE:-3600}" \
-    bash "$REVIEW" "$@" >/dev/null 2>&1
+    bash "$REVIEW" "$@" >/dev/null 2>"${REVIEW_ERR:-/dev/null}"
 }
 n_event() { grep -c "\"event\":\"$1\"" "$ledger" 2>/dev/null || true; }
 has() { grep -q "$1" "$ledger"; }
@@ -133,6 +145,49 @@ case_success() {
     has '"targets":\["'"$TARGET"'"\]'          # the receipt needs paths, not just the scope hash
 }
 check "success writes one start and one end carrying the target paths" case_success
+
+# ---- review.run upload: one event per successful review, nothing otherwise ----
+observe_lines() { : > "$OBSERVE_LOG"; "$@" || true; cat "$OBSERVE_LOG"; }
+case_event_found() {
+    local out; out="$(observe_lines env STUB_MODE=ok bash -c "$(declare -f run_review n_event has); ROOT='$ROOT' REVIEW='$REVIEW' run_review '$TARGET'")"
+    [[ "$(grep -c '^append review.run ' <<<"$out")" -eq 1 ]] || return 1
+    grep -Eq '^append review.run --agent=claude-code --project=/[^ ]+ --author_harness=claude-code --reviewer_harness=codex --findings_p1=1 --findings_p2=0 --findings_p3=0 --empty=false --duration_ms=[0-9]+$' <<<"$out"
+}
+check "a successful review uploads one review.run with author, reviewer and counts" case_event_found
+case_event_author() {
+    local out; out="$(observe_lines env STUB_MODE=ok REVIEW_AUTHOR=codex bash -c "$(declare -f run_review n_event has); ROOT='$ROOT' REVIEW='$REVIEW' run_review '$TARGET'")"
+    grep -Eq '^append review.run --agent=claude-code --project=/[^ ]+ --author_harness=codex --reviewer_harness=codex ' <<<"$out"
+}
+check "REVIEW_AUTHOR names who wrote the work; the caller stays the sender" case_event_author
+case_event_clean() {
+    : > "$OBSERVE_LOG"; STUB_MODE=clean run_review "$TARGET" || return 1
+    grep -Eq -- '--findings_p1=0 --findings_p2=0 --findings_p3=0 --empty=true --duration_ms=[0-9]+$' "$OBSERVE_LOG"
+}
+check "a review with no findings uploads empty=true" case_event_clean
+case_event_debt() {
+    : > "$OBSERVE_LOG"; STUB_MODE=debt run_review "$TARGET" || return 1
+    grep -Eq -- '--findings_p1=0 --findings_p2=0 --findings_p3=0 --empty=true ' "$OBSERVE_LOG"
+}
+check "a debt-only report is not counted as a problem" case_event_debt
+case_event_failed() {
+    : > "$OBSERVE_LOG"; STUB_MODE=fail run_review "$TARGET" || true
+    [[ ! -s "$OBSERVE_LOG" ]]
+}
+check "a failed review uploads nothing" case_event_failed
+case_event_missing() {
+    local rc=0; : > "$OBSERVE_LOG"; REVIEW_ERR="$ROOT/err.txt"
+    PATH="$ROOT/bin:/usr/bin:/bin" STUB_MODE=ok run_review "$TARGET" || rc=$?
+    unset REVIEW_ERR
+    [[ "$rc" -eq 0 ]] && grep -q '^sno: not found; review.run event not recorded$' "$ROOT/err.txt"
+}
+check "tool missing: the review still succeeds and one not-recorded line is printed" case_event_missing
+case_event_broken() {
+    local rc=0; REVIEW_ERR="$ROOT/err.txt"
+    FAKE_OBSERVE_EXIT=3 STUB_MODE=ok run_review "$TARGET" || rc=$?
+    unset REVIEW_ERR
+    [[ "$rc" -eq 0 ]] && grep -q '^sno observe append review.run failed (exit 3); event not recorded$' "$ROOT/err.txt"
+}
+check "tool failing: the review still succeeds and names the event and exit code" case_event_broken
 
 check "model settings and default effort reach the Codex CLI" bash "$HERE/run-model-settings.sh"
 

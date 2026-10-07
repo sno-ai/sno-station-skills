@@ -51,7 +51,7 @@ if sys.argv[2] == 'configured':
 else:
     assert flags == [], args
 assert 'ignored-env-model' not in args, args
-assert 'model_reasoning_effort=low' in args, args
+assert 'model_reasoning_effort=high' in args, args
 PY
     then
         printf 'PASS reviewer model settings: %s\n' "$state"

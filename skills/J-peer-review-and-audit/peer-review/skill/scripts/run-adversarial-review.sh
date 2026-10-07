@@ -23,7 +23,10 @@
 #                        Unset/empty role: no model flag.
 #   REVIEW_CALLER      — codex | claude-code: the harness running this script.
 #                        The other vendor's CLI is preferred as reviewer.
-#   CODEX_EFFORT       — Codex reasoning effort (default: low)
+#   REVIEW_AUTHOR      — codex | claude-code: the harness that wrote the work under
+#                        review (default: REVIEW_CALLER). Only labels the uploaded
+#                        review.run event; it never changes the reviewer choice.
+#   CODEX_EFFORT       — Codex reasoning effort (default: high)
 #   REVIEW_KIND        — prompt selection: code (default) | plan/spec/doc
 #                        (plan-specific adversarial prompt: premise attack,
 #                        probe-evidence classification, coverage statement)
@@ -115,6 +118,7 @@ case "$REVIEW_CALLER" in
     claude-code) CALLER_CLI=claude; OTHER_CLI=codex ;;
     *) echo "error: REVIEW_CALLER must be codex or claude-code" >&2; exit 5 ;;
 esac
+REVIEW_AUTHOR="${REVIEW_AUTHOR:-$REVIEW_CALLER}"
 
 # Reviewer independence comes from a fresh, separate headless session. The other
 # vendor's CLI is preferred when it is installed and logged in; otherwise the
@@ -227,7 +231,7 @@ fi
 source "$SKILL_DIR/scripts/lib/sno-model.sh" || exit 2
 CODEX_MODEL="$(sno_model reviewer)" || exit 2
 CLAUDE_MODEL="$(sno_model reviewer_claude)" || exit 2
-CODEX_EFFORT="${CODEX_EFFORT:-low}"
+CODEX_EFFORT="${CODEX_EFFORT:-high}"
 FOCUS_TEXT="${FOCUS:-none}"
 
 STALL_SECS="${STALL_SECS:-600}"
@@ -243,6 +247,21 @@ BACKOFF_BASE_SECS="${BACKOFF_BASE_SECS:-5}"
 MAX_PARALLEL="${MAX_PARALLEL:-8}"
 
 log() { printf '%s\n' "$*" >&2; }
+
+send_event() {
+    local event="$1" status; shift
+    if ! command -v sno >/dev/null 2>&1; then
+        log "sno: not found; $event event not recorded"
+        return 0
+    fi
+    if timeout 60 sno observe append "$event" "$@" >/dev/null 2>&1; then
+        :
+    else
+        status=$?
+        log "sno observe append $event failed (exit $status); event not recorded"
+    fi
+    return 0
+}
 
 bytesize() { wc -c < "$1" 2>/dev/null | tr -d ' '; }
 
@@ -554,6 +573,27 @@ record_stats() { # $1=outcome $2=report-file(optional)
             bash "$rf" record "$report" --run "$RUN_ID" --scope "$SCOPE_ID" \
                 --kind "$REVIEW_KIND" 2>&1 >/dev/null | head -3 >&2 || true
         fi
+        local p1 p2 p3 empty=true reviewer_harness="$REVIEWER" project
+        read -r p1 p2 p3 < <(awk '
+            {
+                line = tolower($0)
+                sub(/^[[:space:]]+/, "", line)
+                if (line !~ /^-[[:space:]]+\[(critical|high|medium|low)\]/) next
+                if (line ~ /^-[[:space:]]+\[[^]]+\][[:space:]]*\[(debt|out-of-context)\]/) next
+                if (line !~ /[[:space:]]+\(.+\)[[:space:]]*$/) next
+                if (line ~ /^-[[:space:]]+\[(critical|high)\]/) p1++
+                else if (line ~ /^-[[:space:]]+\[medium\]/) p2++
+                else p3++
+            }
+            END { print p1+0, p2+0, p3+0 }
+        ' "$report")
+        (( p1 + p2 + p3 == 0 )) || empty=false
+        [[ "$reviewer_harness" != claude ]] || reviewer_harness=claude-code
+        project="$(git rev-parse --show-toplevel 2>/dev/null)" || project="$PWD"
+        send_event review.run "--agent=$REVIEW_CALLER" "--project=$project" \
+            "--author_harness=$REVIEW_AUTHOR" "--reviewer_harness=$reviewer_harness" \
+            "--findings_p1=$p1" "--findings_p2=$p2" "--findings_p3=$p3" \
+            "--empty=$empty" "--duration_ms=$((dur * 1000))"
     fi
 }
 
