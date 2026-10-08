@@ -4,6 +4,8 @@
 proving its self-tests passed. Install Sno Station's `sno` command first (see the Sno Station
 documentation), then `sno setup` installs a release into every agent it finds on your machine.
 
+The easiest way: tell your AI agent `install sno.ai from GitHub`.
+
 Sno Station puts two or more AI agents on one team — Claude Code, Codex, Hermes, OpenClaw,
 whatever the user already has — and gives them the working habits of a real team: they review
 each other, they hand work over with full context when one is rate-limited, a lead delegates
