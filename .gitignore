@@ -5,5 +5,3 @@ TODO.md*
 __pycache__/
 *.pyc
 node_modules/
-/AGENTS.md
-/CLAUDE.md
