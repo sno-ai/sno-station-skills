@@ -1,17 +1,16 @@
 {
   "unit": "pl",
   "category": "T",
-  "tier": "candidate",
+  "tier": "shipped",
   "split": {
     "pl-analyze": "R"
   },
   "source": {
-    "repo": "sno-station-skills-core",
-    "commit": "956fd26395636f4e762638a639007c63f9048819",
+    "commit": "510f3937b87da942228afab1ee48424f71fc29b1",
     "unit_tree_clean": true
   },
   "selftests_run": 6,
   "contract_sha256": "5022662b4807e817533b5edc1700fb40e87deccaf47d25f82d941baeacf18b62",
   "payload_sha256": "42541920d0309ff42a0b0e7043c7faf6f314db936b8e0eea73960246f369c03e",
-  "published_at": "2026-10-08T07:06:48Z"
+  "published_at": "2026-10-08T19:37:23Z"
 }

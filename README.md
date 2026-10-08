@@ -20,10 +20,11 @@ of eyes from a different vendor, a clean handover when someone has to leave, a l
 out work with a written definition of done, a one-page brief when you come back, and a
 retrospective every night that turns this week's mistakes into next week's rules.
 
-**Two heads, two vendors.** The reviewer is never the author. When both CLIs are installed, a
-Claude Code agent's work is reviewed by Codex and a Codex agent's work by Claude Code, in a
-fresh session that has none of the author's conversation. Different training, different blind
-spots, fewer mistakes reaching you.
+**Dual Brain: different roles, one team.** One agent carries out your task. The other reviews
+the result against your requirements. Claude Code and Codex can take either role. When both
+CLIs are installed, the review runs in the other vendor's CLI, in a fresh session with none of
+the author's conversation. The agents exchange findings and corrections. Add more roles, and
+you have an Agent Squad.
 
 **Work that finishes while you sleep.** Arm it before bed, and when the working agent's
 subscription runs low it writes a handover brief while it still can, wakes an agent from the

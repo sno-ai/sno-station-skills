@@ -1,15 +1,14 @@
 {
   "unit": "owner-intent-audit",
   "category": "J",
-  "tier": "candidate",
+  "tier": "shipped",
   "split": {},
   "source": {
-    "repo": "sno-station-skills-core",
-    "commit": "956fd26395636f4e762638a639007c63f9048819",
+    "commit": "510f3937b87da942228afab1ee48424f71fc29b1",
     "unit_tree_clean": true
   },
   "selftests_run": 1,
   "contract_sha256": "5022662b4807e817533b5edc1700fb40e87deccaf47d25f82d941baeacf18b62",
   "payload_sha256": "7b47f1354c3f51d5db185df4a022ca6c80ff36179fcbb428fd0da777000f0dde",
-  "published_at": "2026-10-08T07:06:48Z"
+  "published_at": "2026-10-08T19:37:23Z"
 }
