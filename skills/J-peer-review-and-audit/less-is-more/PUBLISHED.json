@@ -5,11 +5,11 @@
   "split": {},
   "source": {
     "repo": "sno-station-skills-core",
-    "commit": "5b62afbece2848a937d7f1e1e80374dbb3b39c5c",
+    "commit": "956fd26395636f4e762638a639007c63f9048819",
     "unit_tree_clean": true
   },
   "selftests_run": 1,
   "contract_sha256": "5022662b4807e817533b5edc1700fb40e87deccaf47d25f82d941baeacf18b62",
   "payload_sha256": "af7c278ef3943d739ce1a98fcca7971f5333a72c1b2aecf7c865b23ef00b736e",
-  "published_at": "2026-10-08T05:29:52Z"
+  "published_at": "2026-10-08T07:06:48Z"
 }
