@@ -18,7 +18,7 @@ test('first owner message returns ranked context once and logs a later network f
   const bin = tmp('recall-bin');
   const executable = join(bin, 'sno');
   const requests = join(bin, 'requests.jsonl');
-  writeFileSync(executable, '#!/usr/bin/env node\nconst fs=require("node:fs");\nif(process.argv.slice(2).join(" ")==="station telemetry consent get"){console.log("full");process.exit(0);}\nfs.appendFileSync(process.env.RECALL_REQUESTS, fs.readFileSync(0,"utf8")+"\\n");\nif(process.env.RECALL_FAIL==="1") process.exit(7);\nif(process.env.RECALL_FAIL==="timeout") setTimeout(()=>{},1000); else console.log(JSON.stringify({lesson_ids:["L-1"]}));\n');
+  writeFileSync(executable, '#!/usr/bin/env node\nconst fs=require("node:fs");\nif(process.argv.slice(2).join(" ")==="station consent"){console.log("full");process.exit(0);}\nfs.appendFileSync(process.env.RECALL_REQUESTS, fs.readFileSync(0,"utf8")+"\\n");\nif(process.env.RECALL_FAIL==="1") process.exit(7);\nif(process.env.RECALL_FAIL==="timeout") setTimeout(()=>{},1000); else console.log(JSON.stringify({lesson_ids:["L-1"]}));\n');
   chmodSync(executable, 0o755);
   const command = fileURLToPath(new URL('./rem-reflect.ts', import.meta.url));
   const run = (session: string, fail = '') => spawnSync(process.execPath,
@@ -62,7 +62,7 @@ test('first-message recall sends only recallable lessons and records the selecte
   const bin = tmp('recall-echo-bin');
   const requests = join(bin, 'requests.jsonl');
   // The substitute for the cloud recall selects every lesson it is sent.
-  writeFileSync(join(bin, 'sno'), '#!/usr/bin/env node\nconst fs=require("node:fs");\nif(process.argv.slice(2).join(" ")==="station telemetry consent get"){console.log("full");process.exit(0);}\nconst r=JSON.parse(fs.readFileSync(0,"utf8"));\nfs.appendFileSync(process.env.RECALL_REQUESTS, JSON.stringify(r)+"\\n");\nconsole.log(JSON.stringify({lesson_ids:r.lessons.map(l=>l.lesson_id)}));\n');
+  writeFileSync(join(bin, 'sno'), '#!/usr/bin/env node\nconst fs=require("node:fs");\nif(process.argv.slice(2).join(" ")==="station consent"){console.log("full");process.exit(0);}\nconst r=JSON.parse(fs.readFileSync(0,"utf8"));\nfs.appendFileSync(process.env.RECALL_REQUESTS, JSON.stringify(r)+"\\n");\nconsole.log(JSON.stringify({lesson_ids:r.lessons.map(l=>l.lesson_id)}));\n');
   chmodSync(join(bin, 'sno'), 0o755);
   const result = spawnSync(process.execPath, [fileURLToPath(new URL('./rem-reflect.ts', import.meta.url)), 'recall', '--agent', 'codex', '--first-message'], {
     input: JSON.stringify({ session_id: 'session-9', cwd: checkout, prompt: 'run the batch' }), encoding: 'utf8',

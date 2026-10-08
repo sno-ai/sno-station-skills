@@ -32,11 +32,11 @@ export interface CloudResponse {
 }
 
 export function localConsent(): 'off' | 'metadata-only' | 'full' {
-  const result = spawnSync('sno', ['station', 'telemetry', 'consent', 'get'], { encoding: 'utf8' });
+  const result = spawnSync('sno', ['station', 'consent'], { encoding: 'utf8' });
   if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(result.stderr?.trim() || `sno consent get exited ${result.status}`);
+  if (result.status !== 0) throw new Error(result.stderr?.trim() || `sno station consent exited ${result.status}`);
   const level = result.stdout?.trim();
-  if (level !== 'off' && level !== 'metadata-only' && level !== 'full') throw new Error(`sno consent get returned ${level}`);
+  if (level !== 'off' && level !== 'metadata-only' && level !== 'full') throw new Error(`sno station consent returned ${level}`);
   return level;
 }
 

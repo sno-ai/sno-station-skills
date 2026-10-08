@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check SKILL.md against the reference the sno binary itself serves (`sno skills get cli`)."""
+"""Check SKILL.md against the help the sno binary itself prints (`sno <command> --help`)."""
 from pathlib import Path
 import os
 import re
@@ -28,38 +28,41 @@ for phrase in ["sno", "Sno CLI", "sno setup", "sno update", "sno doctor", "sno u
 
 binary = os.environ.get("SNO_BIN") or shutil.which("sno")
 if not binary:
-    sys.exit("sno-cli selftest: no sno binary; set SNO_BIN to a binary that serves `sno skills get cli`")
-done = subprocess.run([binary, "skills", "get", "cli"], capture_output=True, text=True, timeout=60,
-                      stdin=subprocess.DEVNULL)
-if done.returncode != 0 or not done.stdout.startswith("# sno "):
-    sys.exit(f"sno-cli selftest: `{binary} skills get cli` did not serve a reference "
-             f"(exit {done.returncode}); the binary is older than this skill")
-sections = {}
-current = None
-for line in done.stdout.splitlines():
-    if line.startswith("## sno"):
-        current = line[3:].strip()
-        sections[current] = []
-    elif current:
-        sections[current].append(line)
-sections = {path: "\n".join(lines) for path, lines in sections.items()}
+    sys.exit("sno-cli selftest: no sno binary; set SNO_BIN to the sno binary to check against")
+helps = {}
+
+
+def help_of(path):
+    """Help text of `sno <path> --help`, or None when `path` is not a command (the usage line then names the parent)."""
+    if path not in helps:
+        done = subprocess.run([binary, *path.split(), "--help"], capture_output=True, text=True, timeout=60,
+                              stdin=subprocess.DEVNULL)
+        usage = re.search(r"^Usage: (.*)$", done.stdout, re.M)
+        words = usage.group(1).split() if usage else []
+        named = [word for word in words[1:] if not word.startswith(("[", "<", "-"))]
+        helps[path] = done.stdout if named == path.split() else None
+    return helps[path]
+
 
 def resolve(words):
-    """Longest known command path in words[0:], and the words after it."""
-    path = "sno"
+    """Longest command path in words[1:], and the words after it."""
+    path = ""
     index = 1
-    while index < len(words) and not words[index].startswith("-") and f"{path} {words[index]}" in sections:
-        path = f"{path} {words[index]}"
+    while index < len(words) and not words[index].startswith(("-", "<", "[")):
+        candidate = f"{path} {words[index]}".strip()
+        if help_of(candidate) is None:
+            break
+        path = candidate
         index += 1
     return path, words[index:]
 
 
-def has_subcommands(path):
-    return any(other.startswith(path + " ") for other in sections)
-
-
 def unknown_subcommand(path, rest):
-    return has_subcommands(path) and rest and not rest[0].startswith("-") and not rest[0].startswith("<")
+    text_of_path = help_of(path) if path else subprocess.run([binary, "--help"], capture_output=True, text=True,
+                                                          timeout=60, stdin=subprocess.DEVNULL).stdout
+    usage = re.search(r"^Usage: (.*)$", text_of_path, re.M)
+    takes_command = bool(usage) and re.search(r"[\[<]COMMAND[\]>]", usage.group(1)) is not None
+    return takes_command and bool(rest) and not rest[0].startswith(("-", "<", "["))
 
 
 checked = 0
@@ -75,15 +78,15 @@ for block in re.findall(r"```text\n(.*?)```", text, re.S):
         for word in rest:
             if word.startswith("--") and word != "--version":
                 flag = word.split("=")[0]
-                if flag not in sections[path]:
-                    problems.append(f"flag {flag} is not in the reference of `{path}`: {line}")
+                if flag not in (help_of(path) if path else ""):
+                    problems.append(f"flag {flag} is not in `sno {path} --help`: {line}")
         checked += 1
 for mention in re.findall(r"`(sno [a-z][a-z -]*?)(?: <[^`]*)?`", text):
     path, rest = resolve(mention.split())
     if unknown_subcommand(path, rest):
-        problems.append(f"the text names a command that the reference lacks: `{mention}`")
+        problems.append(f"the text names a command the binary lacks: `{mention}`")
 if checked == 0:
     problems.append("no command block was checked")
 if problems:
     sys.exit("sno-cli selftest failed:\n- " + "\n- ".join(problems))
-print(f"sno-cli selftest ok: {checked} command lines, {len(sections)} reference sections")
+print(f"sno-cli selftest ok: {checked} command lines, {sum(1 for h in helps.values() if h)} commands read")

@@ -166,7 +166,7 @@ function firstPrompt(t: TestContext, mode: string, consent: string, rows: Record
   const bin = tmp('r4-bin');
   const requests = join(bin, 'requests.jsonl');
   const sno = join(bin, 'sno');
-  writeFileSync(sno, '#!/usr/bin/env node\nconst fs=require("node:fs");\nconst a=process.argv.slice(2).join(" ");\nif(a==="station telemetry consent get"){console.log(process.env.CONSENT);process.exit(0);}\nfs.appendFileSync(process.env.RECALL_REQUESTS, fs.readFileSync(0,"utf8")+"\\n");\nconsole.log(JSON.stringify({lesson_ids:["L-1"]}));\n');
+  writeFileSync(sno, '#!/usr/bin/env node\nconst fs=require("node:fs");\nconst a=process.argv.slice(2).join(" ");\nif(a==="station consent"){console.log(process.env.CONSENT);process.exit(0);}\nfs.appendFileSync(process.env.RECALL_REQUESTS, fs.readFileSync(0,"utf8")+"\\n");\nconsole.log(JSON.stringify({lesson_ids:["L-1"]}));\n');
   chmodSync(sno, 0o755);
   const env = { ...process.env, REM_REFLECT_STORE: store, RECALL_REQUESTS: requests, CONSENT: consent,
     SNO_PROFILE_DIR: profile ?? writeStationSettings(mode, rows), PATH: `${bin}:${process.env.PATH ?? ''}` };

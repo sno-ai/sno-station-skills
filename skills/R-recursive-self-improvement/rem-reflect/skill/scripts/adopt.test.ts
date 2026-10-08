@@ -25,7 +25,7 @@ function lesson(id: string, appliesTo: string, advice = `advice ${id}`): Record<
 function commandHarness(store: string): { run(args: string[]): SpawnSyncReturns<string>; bin: string } {
   const bin = tmp('adopt-bin');
   const sno = join(bin, 'sno');
-  writeFileSync(sno, '#!/bin/sh\n[ "$*" = "station telemetry consent get" ] && { echo off; exit 0; }\nexit 2\n');
+  writeFileSync(sno, '#!/bin/sh\n[ "$*" = "station consent" ] && { echo off; exit 0; }\nexit 2\n');
   chmodSync(sno, 0o755);
   const entry = join(import.meta.dirname, 'rem-reflect.ts');
   return { bin, run: (args: string[]) => spawnSync(process.execPath, ['--experimental-strip-types', entry, ...args], {

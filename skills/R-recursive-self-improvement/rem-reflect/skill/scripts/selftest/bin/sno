@@ -23,7 +23,7 @@ if (argv[0] === 'heartbeat' && argv.includes('--list')) {
   process.exit(0);
 }
 const command = argv.join(' ');
-if (command === 'station telemetry consent get') {
+if (command === 'station consent') {
   process.stdout.write('full\n');
   process.exit(0);
 }

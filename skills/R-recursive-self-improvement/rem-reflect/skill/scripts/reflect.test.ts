@@ -38,7 +38,7 @@ test('a failed upload preserves a successful day and the next day retries the sa
   writeFileSync(script, `#!/usr/bin/env node
 const fs = require('node:fs');
 const args = process.argv.slice(2).join(' ');
-if (args === 'station telemetry consent get') { console.log('full'); process.exit(0); }
+if (args === 'station consent') { console.log('full'); process.exit(0); }
 if (args !== 'rem judge') process.exit(2);
 const input = fs.readFileSync(0, 'utf8');
 if (!fs.existsSync(${JSON.stringify(marker)})) {
@@ -84,7 +84,7 @@ console.log(JSON.stringify({schema_version:1,run_id:batch.run_id,history_acknowl
 test('eligible lessons show their advice and both accept commands, while no eligible lesson shows neither command', t => {
   const bin = tmp('report-bin');
   const sno = join(bin, 'sno');
-  writeFileSync(sno, '#!/bin/sh\n[ "$*" = "station telemetry consent get" ] && { echo full; exit 0; }\nexit 2\n');
+  writeFileSync(sno, '#!/bin/sh\n[ "$*" = "station consent" ] && { echo full; exit 0; }\nexit 2\n');
   chmodSync(sno, 0o755);
   const oldPath = process.env.PATH;
   process.env.PATH = `${bin}:${oldPath ?? ''}`;

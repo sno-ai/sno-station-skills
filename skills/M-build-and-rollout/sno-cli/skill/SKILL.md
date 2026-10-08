@@ -35,12 +35,12 @@ for this exact version, once:
 
 ```text
 sno --version
-sno skills get cli
+sno
 ```
 
-Treat `sno skills get cli` as the authority for every flag. If it is not offered (an older
-binary), tell the owner to run `sno update`, and meanwhile read `sno --help` and
-`sno <group> --help`.
+`sno` alone prints the list of commands. Before you use a command, read `sno <command> --help`
+(for a nested command, `sno <group> <command> --help`). That output comes from the installed
+binary, so it is the authority for every flag.
 
 ## Conventions
 
@@ -52,7 +52,7 @@ binary), tell the owner to run `sno update`, and meanwhile read `sno --help` and
     `"executed": false`, or full help plus an example, and the exit code is 0. A normal result has
     no `executed` field; a missing `executed` means the command ran.
 - After a command that is meant to change something, read the result before you tell the owner it
-  worked. A value that does not match is not applied: for example `sno station telemetry consent set`
+  worked. A value that does not match is not applied: for example `sno station consent`
   with a misspelled level only shows the current level and a note, and the exit code is still 0.
   Check that the returned value is the one the owner chose, and that `executed` is not `false`.
 - A real failure keeps a non-zero exit code and its message says what to do next. Report that
@@ -64,21 +64,21 @@ binary), tell the owner to run `sno update`, and meanwhile read `sno --help` and
 | Task | Command |
 |---|---|
 | Install the default product, or a chosen one | `sno setup`, `sno setup <product>` |
-| Update the CLI and installed products | `sno update` |
+| Update the CLI and installed products | nothing to run: any `sno` command updates first when a newer release is out |
 | Health of programs, skills and Station | `sno doctor` |
 | Project memory and improvement records | `sno project status`, `sno project list` |
 | Remaining model allowance | `sno usage` |
 | Uninstall | `sno uninstall`, `sno uninstall <product>`, `sno uninstall all` |
-| Machine identity | `sno account machine register`, `sno account machine claim` |
-| Agent instructions served by the binary | `sno skills list`, `sno skills get <name>` |
-| Reply to an optional product offer | `sno products answer` |
+| Machine identity | `sno account register`, `sno account claim` |
+| Agent instructions served by the binary | `sno skills`, `sno skills <name>` |
+| Reply to an optional product offer | `sno products` |
 | Configure and prove Station | `sno onboarding status`, `sno onboarding apply`, `sno onboarding verify` |
-| Telemetry choices and export | `sno station telemetry consent get`, `pause`, `resume`, `export` |
-| Verify a stored event | `sno station audit verify` |
+| Telemetry choices and export | `sno station consent`, `pause`, `resume`, `export` |
+| Verify a stored event | `sno station audit` |
 | Local REM jobs | `sno station rem-start`, `sno station rem-status` |
 | REM runs and verdicts | `sno rem judge`, `sno rem recall`, `sno rem verdict` |
 
-Flags are not listed here on purpose; read them from `sno skills get cli`.
+Flags are not listed here on purpose; read them from `sno <command> --help`.
 
 ## Recipes
 
@@ -87,7 +87,7 @@ Flags are not listed here on purpose; read them from `sno skills get cli`.
 ```text
 sno --version
 sno doctor --json
-sno skills get core
+sno skills core
 ```
 
 Tell the owner the version, where it is installed, and the one next step. Station onboarding
@@ -103,16 +103,13 @@ sno usage --json
 
 `doctor` exits 0 on warnings. Read the rows whose result is `failed` or `missing` and relay
 each with its fix. If `usage` says the machine is not registered, tell the owner and offer
-`sno account machine register`.
+`sno account register`.
 
 ### Update
 
-```text
-sno update --json
-```
-
-Any `sno` command also starts a background update check once a day, so a manual update is for
-when the owner asks or a command says the version is old.
+Never ask the owner to run `sno update`. Any `sno` command that finds the CLI or an installed
+product older than the latest release (checked once a day) updates first and then runs what was
+asked. `sno update` exists for manual use only.
 
 ### Uninstall
 
@@ -142,10 +139,10 @@ sno station rem-status --wait --timeout 60
 
 Ask the owner, and wait for the answer, before you:
 
-- set a telemetry consent level (`sno station telemetry consent set`) or pause or resume it;
-- record an answer to a product offer (`sno products answer`);
+- set a telemetry consent level (`sno station consent <level>`) or pause or resume it;
+- record an answer to a product offer (`sno products <product> <answer>`);
 - send a human verdict on a REM judgment (`sno rem verdict`);
 - run `sno uninstall … --yes`, or `--purge-state` — even when the owner's own request was to uninstall.
 
-Reading is always fine: `consent get`, `products answer` with no arguments (it lists), `doctor`,
+Reading is always fine: `sno station consent` with no value, `sno products` with no arguments (it lists), `doctor`,
 `usage`, `skills`, `project`.

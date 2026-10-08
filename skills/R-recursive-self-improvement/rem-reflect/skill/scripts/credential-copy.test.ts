@@ -23,7 +23,7 @@ function bothHalves(config: Config): void {
   writeCodexSession(config.codex_root, 'cx', [codexMeta('cx', '/n'), codexUser('do it'), codexAssistant('ok')], MT);
 }
 const cli = tmp('local-consent');
-writeFileSync(join(cli, 'sno'), '#!/bin/sh\nif [ "$*" = "station telemetry consent get" ]; then echo metadata-only; else exit 2; fi\n');
+writeFileSync(join(cli, 'sno'), '#!/bin/sh\nif [ "$*" = "station consent" ]; then echo metadata-only; else exit 2; fi\n');
 chmodSync(join(cli, 'sno'), 0o755);
 const originalPath = process.env.PATH;
 process.env.PATH = `${cli}:${originalPath ?? ''}`;

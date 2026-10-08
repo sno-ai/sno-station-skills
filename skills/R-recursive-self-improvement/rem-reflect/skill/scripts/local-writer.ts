@@ -121,9 +121,9 @@ export function writeLocally(store: string, config: Config, runId: string, eligi
         continue;
       }
       if (instructions === undefined) {
-        const fetched = spawnSync('sno', ['skills', 'get', 'rem-reflect-local-writer'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+        const fetched = spawnSync('sno', ['skills', 'rem-reflect-local-writer'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
         if (fetched.error || fetched.status !== 0 || !fetched.stdout.trim()) {
-          log.push(`local writer: sno skills get rem-reflect-local-writer failed: ${fetched.error?.message ?? (fetched.stderr.trim() || `exit ${fetched.status}`)}; no lessons or reminders written`);
+          log.push(`local writer: sno skills rem-reflect-local-writer failed: ${fetched.error?.message ?? (fetched.stderr.trim() || `exit ${fetched.status}`)}; no lessons or reminders written`);
           return result;
         }
         instructions = fetched.stdout;

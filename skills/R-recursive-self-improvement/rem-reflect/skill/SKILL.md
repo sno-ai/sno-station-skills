@@ -19,7 +19,7 @@ requires:
 > own Claude and Codex login files into its private store to label sessions. In `local-first` nothing is sent to Sno, but the
 > text of a few sessions a night still goes to your own Claude Code or Codex account when this tool asks it for lessons.
 > "What a run reads, copies and uploads" below lists everything.
-> Turn uploading off at any time with `sno station telemetry consent set off`.
+> Turn uploading off at any time with `sno station consent off`.
 
 `rem-reflect` reads this machine's Claude Code and Codex sessions once a day. When the Sno Station
 settings select `agent-native` or `rem-enhanced`, each session's own CLI (on the
@@ -110,13 +110,13 @@ Set these up once. The program never edits these files itself.
   read a listed lesson in full from the recall index.
 - **Check the Sno Station settings.** `sno setup` writes `~/.sno/settings.json` (or
   `$SNO_PROFILE_DIR/settings.json`). Its current `mode` controls daily sharing. The `modelCalls` rows select local labeling
-  and first-prompt lookup. `R5` runs Local First lesson generation on the host and is off in the other modes; the published older table without R5 uses that same default. Its prompt is served by `sno skills get rem-reflect-local-writer` from the CLI binary, not a public skill file: `R2` labels sessions on each session's own CLI with the host's default model, `R3`
+  and first-prompt lookup. `R5` runs Local First lesson generation on the host and is off in the other modes; the published older table without R5 uses that same default. Its prompt is served by `sno skills rem-reflect-local-writer` from the CLI binary, not a public skill file: `R2` labels sessions on each session's own CLI with the host's default model, `R3`
   names the nightly upload and `R4` the first-prompt lookup. Daily runs and verdicts share by
   `mode`: both `agent-native` and `rem-enhanced` call the Sno cloud through `sno rem`; those commands
   enforce full consent. Only `rem-enhanced` uses the cloud judgments. `R4` still needs its cell
   to be `sno-gpu` and consent `full`. With `R2` off, sessions upload with an unknown local outcome.
   A missing settings file sends nothing and names the file; there is no default mode.
-- **Control upload.** `sno station telemetry consent get` shows the local choice. Only `full`
+- **Control upload.** `sno station consent` shows the local choice. Only `full`
   permits session/skill uploads, the first-prompt lookup and held verdicts; installation never overwrites an existing choice.
 
 <!-- reminders:start -->
