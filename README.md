@@ -25,7 +25,7 @@ for the supported agents it finds on your machine.
 Or paste this command into your terminal:
 
 ```bash
-sh -c 'sno_installer_body=$(curl -fsSL https://sno.ai/install) && printf "%s\n" "$sno_installer_body" | sh'
+curl -fsSL https://sno.ai/install | sh
 ```
 
 **Already have Sno Station?** Run `sno setup` to install the skills into your agents.
