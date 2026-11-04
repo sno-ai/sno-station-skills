@@ -5,9 +5,14 @@ set -Eeuo pipefail
 unset CLAUDE_SESSION_ID CODEX_THREAD_ID
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 command_path="${1:-$here/rotate-agent-resume}"
-# The source tree has a skill/ level; the staged publish copy is flat.
-checkpoint_cmd="$(realpath -e "$here/../../../handoff/skill/scripts/handoff-checkpoint" 2>/dev/null ||
-  realpath -e "$here/../../handoff/scripts/handoff-checkpoint")"
+# The sibling handoff script: the source tree has a skill/ level, the published copy is flat, and a deploy stages
+# this unit alone, beside the handoff skill already deployed to the same root.
+checkpoint_cmd=''
+for candidate in "$here/../../../handoff/skill/scripts/handoff-checkpoint" "$here/../../handoff/scripts/handoff-checkpoint" \
+  "$HOME/.claude/skills/handoff/scripts/handoff-checkpoint" "$HOME/.agents/skills/handoff/scripts/handoff-checkpoint"; do
+  checkpoint_cmd="$(realpath -e "$candidate" 2>/dev/null)" && break
+done
+[[ -n "$checkpoint_cmd" ]] || { printf 'rotate-agent-resume.t: handoff-checkpoint not found in source, published or deployed layout\n' >&2; exit 1; }
 root="$(mktemp -d)"
 trap 'rm -rf -- "$root"' EXIT
 mkdir -p "$root/bin" "$root/reach" "$root/work"
