@@ -305,6 +305,25 @@ test('a judgment on a lesson the session was shown at start, never read in full,
   assert.throws(() => applyCloudResponse(store, config, judgment('L-never')), /no lesson shown or read/);
 });
 
+test('a judgment the cloud sends apart as shown-only is applied like a read judgment', () => {
+  const config = fixtureConfig();
+  const store = makeStore(config);
+  const runId = '20261104-0100';
+  appendRows(join(store, 'wiki', 'lessons.jsonl'), [{ ...experienceLesson('L-shown'), status: 'accepted' }]);
+  writeJson(join(store, 'raw', 'codex', 'shown-session.v1.json'), {
+    trace_id: 'shown-session.v1', session_id: 'shown-session', version: 1, agent_id: 'codex', user_id: 'local-u',
+    source_line_range: [1, 1], records: [],
+  });
+  appendRows(join(store, 'ledger', 'usage.jsonl'), [{ type: 'shown', session_id: 'shown-session', lesson_ids: ['L-shown'] }]);
+  writeJson(join(store, 'staging', runId, 'cloud-request.json'), {
+    schema_version: 1, run_id: runId, halves: [], catalogue: [], usage_reads: [], usage_shown: [], outcome_summary: {} });
+  applyCloudResponse(store, config, { schema_version: 1, run_id: runId, history_acknowledged: true, history_links: [],
+    halves: [{ harness: 'codex', attention: [], pages: [], lessons: [], proposals: [], log_entry: 'judged', read_judgments: [],
+      shown_judgments: [{ trace_id: 'shown-session.v1', lesson_id: 'L-shown', followed: 'yes', effect: 'helped' }] }] });
+  assert.deepEqual(readLedger(store).filter(row => row.type === 'lesson-judgment').map(row => row.lesson_id), ['L-shown']);
+  assert.deepEqual(readLessons(store).map(row => [row.helped, row.measured]), [[1, true]]);
+});
+
 test('a cloud lesson whose evidence sits in a failed call lands with the trigger condition code computes from the raw trace', () => {
   const config = fixtureConfig();
   const store = makeStore(config);

@@ -360,7 +360,9 @@ export function applyCloudResponse(store: string, config: Config, response: Clou
     // A judgment counts when this session was shown the lesson at start (the index line carries the advice) or read it in full.
     const seen = new Set(readLessonReads(store, []).map(read => `${read.session_id}::${read.lesson_id}`));
     for (const row of readLessonsShown(store, [])) for (const id of row.lesson_ids) seen.add(`${row.session_id}::${id}`);
-    for (const item of half.read_judgments) {
+    // The cloud sends judgments of lessons that were only shown in their own field, which clients up to 1.0.13 ignore.
+    const judgments = [...half.read_judgments, ...(Array.isArray(half.shown_judgments) ? half.shown_judgments : [])];
+    for (const item of judgments) {
       if (!isObject(item) || typeof item.trace_id !== 'string' || typeof item.lesson_id !== 'string'
         || !['yes', 'no', 'unclear'].includes(String(item.followed))
         || !['helped', 'harmful', 'neutral'].includes(String(item.effect))) throw new Error('cloud batch: invalid read judgment');
