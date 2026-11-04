@@ -178,7 +178,8 @@ def check():
         require(r"sno reach seats.*?A is absent.*?before.*?terminal", steps["8"], "receiver observes sender departure before completion")
         require(r"`sno reach wait[^`]*--reply-to <B-card-id>[^`]*--from <B>[^`]*--timeout[^`]*`", steps["8"], "terminal wait selects receiver B")
         require(r"direct owner work.*?destination session; no artificial.*?mailbox terminal reply", steps["8"], "card-free result")
-        require(r"Sender gone.*?already stopped.*?no A to release.*?When the sender is gone", body, "sender-gone entry shape")
+        require(r"Sender gone.*?already stopped.*?recovery initiator uses the recorded owner authorization.*?never fabricates a response from A.*?When the sender is gone", body, "sender-gone initiator retains real authorization")
+        require(r"Normal call stores the complete launcher.*?short.*?REACH-RING.*?Call mail is transport-only: never accept or complete it.*?original task card and its Reply-To", steps["3"], "mailbox call transports the launcher without owning the task")
         require(r"sno handoff-checkpoint --verify <record>.*?`MATCH`.*?`DRIFT`.*?Done is finished: do not redo it", body, "sender-gone receiver verifies and does not redo")
         require(r"`sno handoff-checkpoint <file>`.*?Keep\s+the file outside\s+the checkout", body, "progress record command and location")
         for heading in ("Short launcher", "Release message"):

@@ -6,7 +6,7 @@ import { isObject, loadConfig, reflectionFiles } from './config.ts';
 import { message } from './text.ts';
 import { gitRemote, projectId } from './identity.ts';
 import type { Harness } from './identity.ts';
-import { lessonsFrom } from './lessons.ts';
+import { lessonContext, lessonsFrom } from './lessons.ts';
 import type { Lesson } from './lessons.ts';
 import { headRevision, parseState, readHead } from './store.ts';
 import { loadLocalSettings } from './local-settings.ts';
@@ -76,7 +76,7 @@ function appendUsage(store: string, row: Record<string, unknown>): void {
   appendFileSync(join(store, reflectionFiles.usage), `${JSON.stringify(row)}\n`, { mode: 0o600 });
 }
 
-export interface RecallInput { session_id?: string; cwd?: string; prompt?: string }
+export interface RecallInput { session_id?: string; cwd?: string; prompt?: string; hook_event_name?: string; source?: string }
 // the index command. Reads at HEAD, never takes the lock, prints the scoped index
 // with the not-armed and pending-verdict prefixes, and records one `shown` line.
 export function recall(store: string, agent: Harness, input: RecallInput, now: Date = new Date(), heartbeat: string = '',
@@ -94,7 +94,7 @@ export function recall(store: string, agent: Harness, input: RecallInput, now: D
   const on = (lesson: Lesson): string => lesson.trigger_match
     ? ` [on: ${lesson.trigger_match.command_id ?? lesson.trigger_match.path_glob ?? lesson.trigger_match.tool}]` : '';
   const index = scoped.map(lesson => message('recallIndexLine', { id: lesson.lesson_id, headline: `${lesson.situation.trigger}${on(lesson)}`,
-    advice: lesson.advice, scope: lesson.applies_to }));
+    advice: lesson.advice, scope: lesson.applies_to }) + `\n${lessonContext(lesson)}`);
   const prefix: string[] = [];
   if (!timer && !armed(heartbeat)) {
     const stateText = readHead(store, 'state.json', revision);
@@ -109,22 +109,60 @@ export function recall(store: string, agent: Harness, input: RecallInput, now: D
   try {
     appendUsage(store, { type: 'shown', session_id: input.session_id, cwd: input.cwd, project_id: project,
       agent_id: agent, lesson_ids: scoped.map(lesson => lesson.lesson_id), time: now.toISOString() });
-  } catch (error) { stderr.push(message('usageAppendFailed', { error: String(error) })); }
+  } catch (error) { stderr.push(`${message('usageAppendFailed', { error: String(error) })}; session ${input.session_id}, lessons ${scoped.map(lesson => lesson.lesson_id).join(', ')}; context delivered without use measurement`); }
   // With no lesson for this project the heading and instruction would only add noise to every session start.
   return { code: 0, lines: [...prefix, ...(index.length ? [message('recallHeading'), ...index,
     message('recallInstruction', { session: input.session_id, agent, cwd: input.cwd })] : [])], stderr };
 }
 
 export function firstMessageRecall(store: string, agent: Harness, input: RecallInput, now: Date = new Date()): CommandResult {
-  if (!input.session_id || !input.cwd || !input.prompt || !existsSync(store)) return { code: 0, lines: [] };
-  const rows = ledgerFrom(existsSync(join(store, reflectionFiles.usage))
-    ? readFileSync(join(store, reflectionFiles.usage), 'utf8') : '');
-  if (rows.some(row => ['first-message-recall', 'first-message-recall-skipped'].includes(String(row.type))
-    && row.session_id === input.session_id)) return { code: 0, lines: [] };
-  const settingsLog: string[] = [];
-  const settings = loadLocalSettings(store, settingsLog);
+  if (!input.session_id || !input.cwd || !existsSync(store)) return { code: 0, lines: [] };
+  const stderr: string[] = [];
+  const rows: Record<string, unknown>[] = [];
+  const usage = join(store, reflectionFiles.usage);
+  try {
+    const text = existsSync(usage) ? readFileSync(usage, 'utf8') : '';
+    for (const line of text.split('\n').filter(Boolean)) {
+      try { const row: unknown = JSON.parse(line); if (isObject(row)) rows.push(row); }
+      catch (error) { stderr.push(`${usage}: ${String(error)}; malformed usage row ignored, lesson delivery continues`); }
+    }
+  } catch (error) { stderr.push(`${usage}: ${String(error)}; usage unavailable, lesson delivery continues`); }
+  const record = (row: Record<string, unknown>): void => {
+    try { appendUsage(store, row); }
+    catch (error) {
+      const lessons = Array.isArray(row.lesson_ids) ? `, lessons ${row.lesson_ids.join(', ')}` : '';
+      stderr.push(`${message('usageAppendFailed', { error: String(error) })}; session ${String(row.session_id)}${lessons}; context delivered without use measurement`);
+    }
+  };
   const config = loadConfig(store);
   const project = projectId(input.cwd, gitRemote(input.cwd), config.project_names);
+  const revision = headRevision(store);
+  const verdicts = ledgerFrom(readHead(store, reflectionFiles.ledger, revision) ?? '');
+  const compact = input.hook_event_name === 'PostCompact'
+    || input.hook_event_name === 'SessionStart' && input.source === 'compact';
+  const accepted = lessonsFrom(readHead(store, reflectionFiles.lessons, revision) ?? '')
+    // A compaction restores every lesson the session could recall; a prompt delivers only local approvals.
+    .filter(lesson => compact ? recallable(lesson, project) : lesson.status === 'accepted' && inScope(lesson, project));
+  const approval = (lesson: Lesson): number => verdicts.findLastIndex(row => row.type === 'lesson-verdict' && row.lesson_id === lesson.lesson_id);
+  const handled = rows.some(row => ['first-message-recall', 'first-message-recall-skipped'].includes(String(row.type))
+    && row.session_id === input.session_id);
+  // The first prompt records the approvals the session already knows; a later prompt delivers only newer approvals.
+  const known = accepted.map(lesson => ({ lesson_id: lesson.lesson_id, verdict: approval(lesson) }));
+  const selected = !compact && !handled ? [] : accepted.filter(lesson => compact || !rows.some(row => row.session_id === input.session_id
+    && ['shown', 'first-message-recall', 'first-message-recall-skipped'].includes(String(row.type))
+    && Array.isArray(row.accepted_verdicts) && row.accepted_verdicts.some(value => isObject(value)
+      && value.lesson_id === lesson.lesson_id && value.verdict === approval(lesson))));
+  if (selected.length) {
+    record({ type: 'shown', session_id: input.session_id, agent_id: agent, project_id: project,
+      lesson_ids: selected.map(lesson => lesson.lesson_id),
+      accepted_verdicts: selected.map(lesson => ({ lesson_id: lesson.lesson_id, verdict: approval(lesson) })), time: now.toISOString() });
+    const event = compact ? input.hook_event_name : input.hook_event_name === 'SessionStart' ? 'SessionStart' : 'UserPromptSubmit';
+    return { code: 0, stderr, lines: [JSON.stringify({ hookSpecificOutput: { hookEventName: event,
+      additionalContext: selected.map(lesson => `${lesson.lesson_id}:\n${lessonContext(lesson)}`).join('\n') } })] };
+  }
+  if (compact || handled || !input.prompt) return { code: 0, lines: [], stderr };
+  const settingsLog: string[] = [];
+  const settings = loadLocalSettings(store, settingsLog);
   // R4: the message goes to the Sno cloud only when its cell is sno-gpu and consent is full. The row
   // below marks this session's first message as handled either way, so a later prompt never counts as first.
   let gate: ReturnType<typeof cloudStepGate>;
@@ -133,14 +171,14 @@ export function firstMessageRecall(store: string, agent: Harness, input: RecallI
   // After the cloud refused for a used-up allowance, no session calls it again before the reset it named.
   const paused = rows.filter(row => row.type === 'first-message-recall-skipped').pop();
   if (gate.send && typeof paused?.until === 'string' && now.getTime() < Date.parse(paused.until)) {
-    appendUsage(store, { type: 'first-message-recall-skipped', session_id: input.session_id, until: paused.until, time: now.toISOString() });
-    return { code: 0, lines: [] };
+    record({ type: 'first-message-recall-skipped', session_id: input.session_id, until: paused.until, time: now.toISOString(),
+      accepted_verdicts: known });
+    return { code: 0, lines: [], stderr };
   }
-  appendUsage(store, { type: 'first-message-recall', session_id: input.session_id, agent_id: agent,
+  record({ type: 'first-message-recall', session_id: input.session_id, agent_id: agent,
     project_id: project, time: now.toISOString(), settings: settingsLog[0], call: 'R4',
-    ...(gate.send ? {} : { skipped: gate.reason }) });
-  if (!gate.send) return { code: 0, lines: [] };
-  const revision = headRevision(store);
+    ...(gate.send ? {} : { skipped: gate.reason }), accepted_verdicts: known });
+  if (!gate.send) return { code: 0, lines: [], stderr };
   const lessons = lessonsFrom(readHead(store, reflectionFiles.lessons, revision) ?? '')
     .filter(lesson => recallable(lesson, project));
   const request = { project_id: project, message: input.prompt,
@@ -152,12 +190,12 @@ export function firstMessageRecall(store: string, agent: Harness, input: RecallI
     try { refusal = JSON.parse(result.stdout); } catch { /* not the CLI's JSON error: the failure row below keeps the text */ }
     if (isObject(refusal) && refusal.error === 'allowance_used_up' && typeof refusal.reset_at === 'string'
       && Number.isFinite(Date.parse(refusal.reset_at))) {
-      appendUsage(store, { type: 'first-message-recall-skipped', session_id: input.session_id, until: refusal.reset_at, time: now.toISOString() });
-      return { code: 0, lines: [] };
+      record({ type: 'first-message-recall-skipped', session_id: input.session_id, until: refusal.reset_at, time: now.toISOString() });
+      return { code: 0, lines: [], stderr };
     }
-    appendUsage(store, { type: 'first-message-recall-failed', session_id: input.session_id,
+    record({ type: 'first-message-recall-failed', session_id: input.session_id,
       error: String(result.error ?? (result.stdout?.trim() || result.stderr?.trim() || `exit ${result.status}`)), time: now.toISOString() });
-    return { code: 0, lines: [] };
+    return { code: 0, lines: [], stderr };
   }
   try {
     const answer: unknown = JSON.parse(result.stdout);
@@ -165,15 +203,15 @@ export function firstMessageRecall(store: string, agent: Harness, input: RecallI
       throw new Error('invalid recall response');
     }
     const selected = answer.lesson_ids.map(id => lessons.find(lesson => lesson.lesson_id === id)).filter((lesson): lesson is Lesson => !!lesson);
-    if (!selected.length) return { code: 0, lines: [] };
-    appendUsage(store, { type: 'shown', session_id: input.session_id, agent_id: agent, project_id: project,
+    if (!selected.length) return { code: 0, lines: [], stderr };
+    record({ type: 'shown', session_id: input.session_id, agent_id: agent, project_id: project,
       lesson_ids: selected.map(lesson => lesson.lesson_id), time: now.toISOString() });
-    const text = selected.map(lesson => `${lesson.lesson_id}: ${lesson.situation.trigger}\n${lesson.advice}`).join('\n');
-    return { code: 0, lines: [JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: text } })] };
+    const text = selected.map(lesson => `${lesson.lesson_id}:\n${lessonContext(lesson)}`).join('\n');
+    return { code: 0, lines: [JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: text } })], stderr };
   } catch (error) {
-    appendUsage(store, { type: 'first-message-recall-failed', session_id: input.session_id,
+    record({ type: 'first-message-recall-failed', session_id: input.session_id,
       error: String(error), time: now.toISOString() });
-    return { code: 0, lines: [] };
+    return { code: 0, lines: [], stderr };
   }
 }
 
@@ -189,14 +227,15 @@ export function lessonDetail(store: string, lessonId: string, input: LessonInput
   const revision = headRevision(store);
   const lesson = lessonsFrom(readHead(store, reflectionFiles.lessons, revision) ?? '').find(row => row.lesson_id === lessonId);
   if (!lesson) return { code: 1, lines: [`${lessonId}: no such lesson`] };
-  if (!recallStatus(lesson)) return { code: 1, lines: [message('lessonRefusedScope', { id: lessonId, reason: `status ${lesson.status}` })] };
+  if (!recallStatus(lesson) && !(lesson.status === 'candidate' && lesson.listed === true)) {
+    return { code: 1, lines: [message('lessonRefusedScope', { id: lessonId, reason: `status ${lesson.status}` })] };
+  }
   if (!inScope(lesson, project)) return { code: 1, lines: [message('lessonRefusedScope', { id: lessonId, reason: `scope ${lesson.applies_to}` })] };
   const stderr: string[] = [];
   try { appendUsage(store, { type: 'read', session_id: input.session ?? '', lesson_id: lessonId, time: now.toISOString() }); }
-  catch (error) { stderr.push(message('usageAppendFailed', { error: String(error) })); }
+  catch (error) { stderr.push(`${message('usageAppendFailed', { error: String(error) })}; session ${input.session ?? ''}, lesson ${lessonId}; context delivered without read measurement`); }
   return { code: 0, stderr, lines: [
-    message('lessonField', { key: 'situation', value: JSON.stringify(lesson.situation) }),
-    message('lessonField', { key: 'advice', value: lesson.advice }),
+    ...lessonContext(lesson).split('\n'),
     message('lessonField', { key: 'because', value: lesson.because }),
     message('lessonField', { key: 'evidence', value: JSON.stringify(lesson.evidence) }),
   ] };

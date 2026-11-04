@@ -46,7 +46,7 @@ runs once at a crossing. No other process should poll quota.
 
 ```
 $join-talk
-After every completed task run `sno handoff-checkpoint <record>` outside the checkout, then update Done and Next. Commit only if the owner authorized it.
+Keep the exact unfinished action and expected result in Next before undertaking it. At real task boundaries, before an orderly stop and before compaction run `sno handoff-checkpoint` (or the same explicit record path) and update Done, Next and the latest failed operation/target/error. Commit only if the owner authorized it.
 When told to ROTATE, pause edits and run $handoff with the specified receiver kind, model and provider.
 ```
 
@@ -170,16 +170,40 @@ If the crossing was `wait`/`owner_action`, or restoring A failed, use:
 sno rotate-agent-resume --to <agent> --cwd <checkout> --checkpoint <record> --work <work> --model <M> --provider <P> --report-to <owner session>
 ```
 
-Use a distinct work label per candidate attempt. The record must belong to the same
-checkout. `MATCH` means unchanged; `DRIFT` is passed to B to inspect before continuing.
-B reads the whole record and emits fresh `RESUME_ACK` without editing. The script
-checks its answer provider before releasing B to continue; failed acknowledgement
-leaves B paused and logs the failure, so the caller can try the next candidate.
-A missing release receipt needs inspection: B may already own the work.
-The last line on success is `RESUMED seat=<address> verify=MATCH|DRIFT`.
+The record must belong to the same checkout. The command first uses its exact recorded
+vendor session identity with `claude -p --resume <id>` or `codex exec resume <id> <prompt>`;
+it never chooses an unrelated latest session. Missing identity skips only native resume.
+If native resume is unavailable, it rebuilds from the same readable brief, applicable
+Reach card and existing scoped memory retrieval in the original vendor when usable.
+Known exhausted quota skips both original-vendor entries and uses the selected other
+vendor. Unknown quota or authentication failure is not called exhausted quota. If no
+other vendor can execute, it retains the brief and says takeover was skipped and no
+recovery completed; a quota blocker does not mean task facts were lost.
 
-B prints `DONE_<work>` when finished, or `BLOCKED_<work> <reason>` when the owner is
-needed. It never prints `DONE_<work>` while any task waits on the owner.
+`MATCH`/`DRIFT` are auxiliary checkout observations for reconciliation, not admission
+requirements. B reads the whole record and emits fresh `HANDOFF_READY <nonce>` without
+editing. The command checks the existing selected-provider information where applicable,
+then sends `HANDOFF_RELEASE <nonce>` and requires `HANDOFF_RELEASED <nonce>` from new
+receiver output before B writes. All calls use stored full-text call mail plus one short
+cue; no repeated Enter or second handshake. Call mail is transport-only and never an
+owned work card. Card-backed work preserves the original chain, actual receiver card
+recipient and Reply-To; direct owner work does not invent an original card. The recovery
+initiator uses its real authorization and never fabricates a response from an absent A.
+An uncertain release needs inspection of that receiver and Reach records: B may own the
+work, so never start another receiver. Reach's existing seat/receipt records suffice;
+there is no second per-work once file.
+
+Output distinguishes `resumed` (the exact original conversation), `rebuilt` (new
+conversation; original conversation lost) and `lost` (essential next-step facts
+unrecoverable). Each is separate from `next_action=completed|unfinished|blocked`.
+Startup, readiness and release report the action unfinished; they never prove it
+completed. Completion requires the receiver's actual next-step result. B maintains the
+complete brief at its default `<Sno profile>/station/handoff/<session-id>.md` path for
+next-prompt and post-compaction injection, retaining the prior complete record.
+
+B reports the actual next action result and earlier failure to the continuing destination
+in the brief (or `--report-to`). A missing optional observation or failed report delivery
+does not revoke B's ownership or let A resume competing task writes.
 After confirmed transfer append
 `rotated <UTC-timestamp> from=<agent> to=<agent> remaining=<N>% commits=<count>`
 with the count printed by the triggering tick. Only this real handoff ends rotation

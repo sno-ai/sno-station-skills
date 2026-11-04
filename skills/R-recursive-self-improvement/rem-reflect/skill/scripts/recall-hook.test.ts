@@ -1,13 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { git } from './store.ts';
 import { appendRows } from './lessons.ts';
-import { tmp, fixtureCheckout, fixtureConfig, makeStore } from './test-helpers.ts';
+import { tmp, fixtureCheckout, fixtureConfig, makeStore, writeStationSettings } from './test-helpers.ts';
 
 // the printed SessionStart hook entries, merged into an isolated harness config, make
 // a REAL `claude -p` / `codex exec` run the recall index command at session start — proven by the
@@ -177,3 +178,144 @@ test('install-hooks run through sno prints the absolute sno path, because a hook
     assert.ok(out.includes(`"command": "${quoted} rem-reflect recall --agent ${agent} --first-message"`), `${agent} first message uses the absolute path`);
   }
 });
+
+// These cases exercise an actual task after ordinary approval. The draft is produced by
+// the real cloud-writer check, rather than supplied as a model answer by this harness.
+function experienceFixture(): { store: string; checkout: string; lesson: Record<string, unknown> } {
+  const draftPath = process.env.REM_EXPERIENCE_DRAFT;
+  assert.ok(draftPath && existsSync(draftPath), 'REM_EXPERIENCE_DRAFT names the real cloud draft');
+  const draft = JSON.parse(readFileSync(draftPath, 'utf8'));
+  const lesson = draft.lesson ?? draft;
+  for (const field of ['expected_result', 'success_criteria', 'advice']) {
+    assert.equal(typeof lesson[field], 'string', `real draft includes ${field}`);
+    assert.ok(lesson[field].trim());
+  }
+  const checkout = fixtureCheckout();
+  assert.equal(typeof lesson.project_id, 'string', 'the real draft retains its project context');
+  git(checkout, ['remote', 'remove', 'origin']);
+  const store = makeStore(fixtureConfig({ claude_root: tmp('experience-claude'), codex_root: tmp('experience-codex'),
+    project_names: { [checkout]: String(lesson.project_id) } }));
+  writeFileSync(join(checkout, 'labels.csv'), 'label\n beta \nALPHA\nbeta\n gamma \n');
+  writeFileSync(join(checkout, 'check-output.cjs'), [
+    "const assert = require('node:assert/strict');",
+    "const fs = require('node:fs');",
+    "assert.equal(fs.readFileSync('labels.txt', 'utf8'), 'ALPHA\\nBETA\\nGAMMA\\n');",
+    "console.log('labels criterion passed');",
+  ].join('\n') + '\n');
+  return { store, checkout, lesson };
+}
+
+function approveExperience(store: string, lesson: Record<string, unknown>): void {
+  assert.equal(lesson.listed, true, 'the real cloud draft is eligible for ordinary acceptance');
+  appendRows(join(store, 'wiki/lessons.jsonl'), [{ ...lesson, status: 'candidate' }]);
+  git(store, ['add', 'wiki/lessons.jsonl']);
+  git(store, ['commit', '--quiet', '-m', 'stage cloud lesson']);
+  const result = execFileSync(process.execPath, ['--experimental-strip-types', REMREFLECT, 'accept', String(lesson.lesson_id), '--this-project'],
+    { encoding: 'utf8', env: { ...process.env, REM_REFLECT_STORE: store } });
+  assert.match(result, /accepted/);
+}
+
+function experienceClaudeHome(store: string, promptHook: boolean): { iso: string; env: NodeJS.ProcessEnv } {
+  assert.ok(CLAUDE_MODEL, 'set REM_E2E_CLAUDE_MODEL to the configured Claude model');
+  const iso = tmp('experience-claude-home');
+  const cred = join(homedir(), '.claude', '.credentials.json');
+  assert.ok(existsSync(cred), 'Claude credential is available for an isolated config');
+  copyFileSync(cred, join(iso, '.credentials.json'));
+  chmodSync(join(iso, '.credentials.json'), 0o600);
+  const skillDir = join(iso, 'skills', 'label-normalization');
+  mkdirSync(skillDir, { recursive: true });
+  writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: label-normalization\ndescription: Normalize CSV labels\n---\nTrim labels, uppercase, remove duplicates, sort, then run the existing node check-output.cjs.\n');
+  const hooks = promptHook
+    ? { UserPromptSubmit: [{ hooks: [{ type: 'command', command: 'sno rem-reflect recall --agent claude-code --first-message' }] }] }
+    : { SessionStart: [{ hooks: [{ type: 'command', command: 'sno rem-reflect recall --agent claude-code' }] }] };
+  writeFileSync(join(iso, 'settings.json'), JSON.stringify({ hooks }));
+  return { iso, env: { ...process.env, CLAUDE_CONFIG_DIR: iso, SNO_PROFILE_DIR: writeStationSettings('local-first'),
+    PATH: `${remReflectShim(store)}:${process.env.PATH}` } };
+}
+
+function experienceTranscript(iso: string): string {
+  const texts: string[] = [];
+  const walk = (dir: string): void => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (entry.name.endsWith('.jsonl')) texts.push(readFileSync(path, 'utf8'));
+    }
+  };
+  walk(join(iso, 'projects'));
+  return texts.join('\n');
+}
+
+function observeExperience(store: string, checkout: string, iso: string, lesson: Record<string, unknown>, moment: string,
+  expectedSession?: string): void {
+  const transcript = experienceTranscript(iso);
+  for (const field of ['advice', 'expected_result', 'success_criteria']) {
+    assert.ok(transcript.includes(JSON.stringify(lesson[field]).slice(1, -1)), `${field} reached the real session`);
+  }
+  assert.ok(transcript.includes('memory_fact_ids'), 'recorded fact references reached the session');
+  assert.ok(transcript.includes('skill_target'), 'the recorded skill reference reached the session');
+  let loadedSkill = false;
+  for (const line of transcript.split('\n').filter(Boolean)) {
+    const row = JSON.parse(line);
+    if (!Array.isArray(row.message?.content)) continue;
+    for (const item of row.message.content) {
+      if (item.type !== 'tool_use') continue;
+      if (item.name === 'Skill' && String(item.input.skill).includes('label-normalization')) loadedSkill = true;
+      if (item.name === 'Read' && String(item.input.file_path).endsWith('/label-normalization/SKILL.md')) loadedSkill = true;
+      if (item.name === 'Read') assert.notEqual(item.input.file_path, join(checkout, 'check-output.cjs'), 'the checker did not supply the transformation rules');
+      if (item.name === 'Bash') assert.doesNotMatch(item.input.command, /(?:cat|head|tail|sed|less)\s[^\n]*check-output\.cjs/,
+        'the checker was invoked as a black box');
+    }
+  }
+  assert.ok(loadedSkill, 'the real session loaded the skill named by the lesson situation');
+  assert.equal(readFileSync(join(checkout, 'labels.txt'), 'utf8'), 'ALPHA\nBETA\nGAMMA\n');
+  assert.match(transcript, /labels criterion passed/, 'the agent ran the criterion and recorded its actual result');
+  assert.ok(shownLines(store).some(row => Array.isArray(row.lesson_ids) && row.lesson_ids.includes(lesson.lesson_id)),
+    'the ordinary hook recorded exposure to this lesson');
+  if (expectedSession) {
+    assert.ok(shownLines(store).some(row => row.session_id === expectedSession
+      && Array.isArray(row.lesson_ids) && row.lesson_ids.includes(lesson.lesson_id)), 'post-approval exposure belongs to the original running session');
+  }
+  // Optional retention lets the existing real-cloud judge consume this same genuine session.
+  const proofDir = process.env.REM_EXPERIENCE_PROOF_DIR;
+  if (proofDir) {
+    const out = join(proofDir, moment);
+    mkdirSync(out, { recursive: true });
+    writeFileSync(join(out, 'transcript.jsonl'), transcript);
+    writeFileSync(join(out, 'lesson.json'), JSON.stringify(lesson, null, 2));
+    copyFileSync(join(store, 'ledger/usage.jsonl'), join(out, 'usage.jsonl'));
+    copyFileSync(join(store, 'wiki/lessons.jsonl'), join(out, 'lessons.jsonl'));
+    copyFileSync(join(checkout, 'labels.txt'), join(out, 'labels.txt'));
+  }
+}
+
+test('experience graph: session-start complete lesson guides a real Claude task',
+  { skip: RUN ? false : 'set REM_E2E=1 to spend quota' }, () => {
+    const { store, checkout, lesson } = experienceFixture();
+    approveExperience(store, lesson);
+    const { iso, env } = experienceClaudeHome(store, false);
+    execFileSync('claude', ['-p', 'Use the label-normalization skill to create labels.txt from labels.csv.', '--model', CLAUDE_MODEL,
+      '--permission-mode', 'bypassPermissions', '--append-system-prompt',
+      `This is an isolated test project at ${checkout}. Work only in that directory and read skills only from ${join(iso, 'skills')}. Treat check-output.cjs as a black box: do not read its source or other files outside this project. You may invoke it.`],
+    { cwd: checkout, env, encoding: 'utf8', timeout: 180_000 });
+    observeExperience(store, checkout, iso, lesson, 'session-start');
+  });
+
+test('experience graph: current-session approved lesson guides a real Claude task',
+  { skip: RUN ? false : 'set REM_E2E=1 to spend quota' }, () => {
+    const { store, checkout, lesson } = experienceFixture();
+    const { iso, env } = experienceClaudeHome(store, true);
+    const session = randomUUID();
+    const common = ['--model', CLAUDE_MODEL, '--permission-mode', 'bypassPermissions', '--append-system-prompt',
+      `This is an isolated test project at ${checkout}. Work only in that directory and read skills only from ${join(iso, 'skills')}. Treat check-output.cjs as a black box: do not read its source or other files outside this project. You may invoke it.`];
+    execFileSync('claude', ['-p', 'Write ready.txt containing ready.', '--session-id', session, ...common],
+      { cwd: checkout, env, encoding: 'utf8', timeout: 90_000 });
+    const usage = readFileSync(join(store, 'ledger/usage.jsonl'), 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line));
+    assert.ok(usage.some(row => row.type === 'first-message-recall' && row.session_id === session), 'the original session handled its first prompt');
+    assert.ok(!usage.some(row => row.type === 'first-message-recall-failed'), 'the first prompt did not fail recall');
+    approveExperience(store, lesson);
+    execFileSync('claude', ['-p', 'Use the label-normalization skill to create labels.txt from labels.csv.', '--resume', session, ...common],
+      { cwd: checkout, env, encoding: 'utf8', timeout: 180_000 });
+    observeExperience(store, checkout, iso, lesson, 'current-session', session);
+  });

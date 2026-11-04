@@ -30,6 +30,7 @@ interface WrittenLesson {
   summary: string; class: 'SKILL_DEFECT' | 'EXECUTION_LAPSE';
   situation: { task_type: string; trigger: string; tools: string[] };
   advice: string; because: string; polarity: 'from_failure' | 'from_success';
+  expected_result: string; success_criteria: string; memory_fact_ids: string[];
   evidence: { line_start: number; line_end: number; quote: string }[];
   skill_target: string | null; reminder_line: string | null; verdict_line: number;
 }
@@ -141,10 +142,10 @@ export function writeLocally(store: string, config: Config, runId: string, eligi
       const cwd = join(store, reflectionFiles.staging, runId, harness);
       privateDirectory(cwd);
       const cli: Cli = harness === 'claude-code' ? 'claude' : harness;
+      const input = promptFor(instructions, trace, events, verdicts, settings.labeler_input_max_chars, settings.labeler_event_window_lines);
       let stdout: string;
       try {
-        stdout = backend.spawn({ cli, cwd, input: promptFor(instructions, trace, events, verdicts, settings.labeler_input_max_chars, settings.labeler_event_window_lines),
-          kind: 'model' }).stdout;
+        stdout = backend.spawn({ cli, cwd, input, kind: 'model' }).stdout;
       } catch (error) {
         if (!(error instanceof BackendError) && !(error instanceof CeilingReached)) throw error;
         log.push(`${trace.trace_id}: local writer unavailable (${cli}: ${error.message})`);
@@ -165,6 +166,10 @@ export function writeLocally(store: string, config: Config, runId: string, eligi
           const cited = verdictRef(lesson, verdicts, calls);
           if ('reason' in cited) throw new Error(cited.reason);
           ref = cited.ref;
+          const suppliedFacts = new Set([...input.matchAll(/["']?fact_?[Ii]d["']?\s*[:=]\s*["']([^"']+)["']/g)].map(match => match[1]));
+          const missingFacts = lesson.memory_fact_ids.filter(id => !suppliedFacts.has(id));
+          if (missingFacts.length) log.push(`${trace.trace_id}: local writer omitted memory fact references ${missingFacts.join(', ')}: absent from supplied evidence; lesson kept`);
+          lesson.memory_fact_ids = lesson.memory_fact_ids.filter(id => suppliedFacts.has(id));
         }
       } catch (error) {
         log.push(`${trace.trace_id}: local writer answer refused: ${String(error)}`);
@@ -181,6 +186,7 @@ export function writeLocally(store: string, config: Config, runId: string, eligi
         count: 1, helped: 0, harmful: 0, measured: false, created_run: runId, project_id: trace.project_id, agent_id: trace.agent_id,
         user_id: trace.user_id, skill_target: skillTarget, scenario: lesson.situation, situation: lesson.situation,
         advice: lesson.advice, because: lesson.because, applies_to: `project:${trace.project_id}`, polarity: lesson.polarity,
+        expected_result: lesson.expected_result, success_criteria: lesson.success_criteria, memory_fact_ids: lesson.memory_fact_ids,
         evidence, counter_examples: 'not searched', verdict_ref: ref,
         trigger_match: lessonTrigger(trace, evidence, line => log.push(`${trace.trace_id}: ${line}`)) }]);
       result.lessons++;

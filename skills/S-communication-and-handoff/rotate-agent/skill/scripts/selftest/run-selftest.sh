@@ -4,6 +4,18 @@
 set -Eeuo pipefail
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SKILL="$(cd -- "$HERE/../.." && pwd)"
+check_resume_text() {
+  local text
+  text="$(cat "$SKILL/SKILL.md")"
+  if grep -Fq 'next_action=completed|unfinished|blocked' <<<"$text" &&
+     grep -q 'Startup, readiness and release report the action unfinished' <<<"$text"; then
+    printf 'PASS resume text separates recovery outcome from action completion\n'
+  else
+    printf 'FAIL resume text separates recovery outcome from action completion\n'
+    return 1
+  fi
+}
+if [[ "${1:-}" == resume-contract ]]; then check_resume_text; exit; fi
 WATCH="$SKILL/scripts/rotate-agent-watch"
 PREFLIGHT="$SKILL/scripts/rotate-agent-preflight"
 FAKE="$HERE/fake-quota"
@@ -99,8 +111,7 @@ check "9 SKILL.md frontmatter names unit and programs" "1" "$ok"
 body="$(sed '1,/^---$/d' "$SKILL/SKILL.md")"
 ok=1; grep -q 'rotate-agent-resume --to <agent> --cwd <checkout> --checkpoint <record> --work <work>' <<<"$body" && grep -q 'spawn --window' <<<"$body" || ok=0
 check "10 fallback receiver is started by one command on a tmux window" "1" "$ok"
-ok=1; grep -q 'BLOCKED_<work> <reason>' <<<"$body" && grep -q 'never prints `DONE_<work>` while any task waits on the owner' <<<"$body" || ok=0
-check "11 resume prompt separates done from blocked" "1" "$ok"
+check_resume_text || fail=1
 ok=1; grep -q 'A seat marked `stale`.*is not proof that its agent is gone' <<<"$body" || ok=0
 check "12 stale seat is not death" "1" "$ok"
 if "$PREFLIGHT" --from codex --to codex --cwd "$TMP" >/dev/null 2>&1; then rc=0; else rc=$?; fi

@@ -14,6 +14,105 @@ import { writeJson } from './store.ts';
 import { fixtureConfig, makeStore, writeInstalledSkill } from './test-helpers.ts';
 import { fileURLToPath } from 'node:url';
 import type { Trace } from './harvest.ts';
+import { reflect } from './reflect.ts';
+import { FixtureBackend, writeStationSettings } from './test-helpers.ts';
+
+function experienceLesson(id: string) {
+  const situation = { task_type: 'report', trigger: 'writing an account report', tools: ['account_read'] };
+  return { lesson_id: id, page_id: `pg-${id}`, status: 'candidate', listed: true, count: 1, helped: 0, harmful: 0,
+    measured: false, created_run: '20261103-0100', project_id: 'p', agent_id: 'codex', user_id: 'local-u',
+    skill_target: 'skills/report-writer', scenario: situation, situation, advice: 'Read the report back before declaring success.',
+    because: 'A successful write alone does not establish the stored report content.', applies_to: 'project:p',
+    polarity: 'from_failure', evidence: [], counter_examples: 'not searched',
+    expected_result: 'The stored report matches the title and body that were written.',
+    success_criteria: 'The account read result contains the report title and body.', memory_fact_ids: ['fact-report-format'] };
+}
+
+test('experience graph: preserves outcomes through apply and approval', t => {
+  const profile = process.env.SNO_PROFILE_DIR;
+  process.env.SNO_PROFILE_DIR = writeStationSettings('local-first');
+  t.after(() => { if (profile === undefined) delete process.env.SNO_PROFILE_DIR; else process.env.SNO_PROFILE_DIR = profile; });
+  const config = fixtureConfig();
+  const store = makeStore(config);
+  const runId = '20261103-0100';
+  const draft = process.env.REM_EXPERIENCE_DRAFT
+    ? JSON.parse(readFileSync(process.env.REM_EXPERIENCE_DRAFT, 'utf8')) as ReturnType<typeof experienceLesson> | { lesson: ReturnType<typeof experienceLesson> }
+    : experienceLesson('L-experience');
+  const original = 'lesson' in draft ? draft.lesson : draft;
+  assert.ok(original.expected_result.trim());
+  assert.ok(original.success_criteria.trim());
+  assert.ok(Array.isArray(original.memory_fact_ids));
+  const noReferences = { ...experienceLesson('L-no-references'), memory_fact_ids: [], skill_target: null };
+  writeJson(join(store, 'staging', runId, 'cloud-request.json'), { catalogue: [] });
+  applyCloudResponse(store, config, { schema_version: 1, run_id: runId, history_acknowledged: true, history_links: [],
+    halves: [{ harness: 'codex', pages: [], proposals: [], read_judgments: [],
+      lessons: [original, noReferences].map(lesson => ({ judgment_id: `j-${lesson.lesson_id}`, lesson })) }] });
+  const report = reflect(store, config, runId, new FixtureBackend(), [], new Date('2026-11-03T01:00:00Z')).report.join('\n');
+  for (const value of [JSON.stringify(original.situation), original.advice, original.expected_result, original.success_criteria,
+    ...original.memory_fact_ids, original.skill_target === null ? 'skill_target: null' : original.skill_target]) {
+    assert.ok(report.includes(value), `decision output contains ${value}`);
+  }
+  assert.ok(report.includes(`sno rem-reflect accept ${original.lesson_id}`));
+  for (const lesson of [original, noReferences]) {
+    assert.equal(verdictCommand(store, 'accept', lesson.lesson_id).code, 0, 'ordinary accept needs no additional input');
+    const accepted = readLessons(store).find(row => row.lesson_id === lesson.lesson_id);
+    assert.equal(accepted?.status, 'accepted');
+    for (const key of ['expected_result', 'success_criteria', 'memory_fact_ids', 'skill_target'] as const) {
+      assert.deepEqual(accepted?.[key], lesson[key], `${key} survives apply and approval`);
+    }
+  }
+  assert.equal(verdictCommand(store, 'accept', original.lesson_id, new Date(), true).code, 0);
+  const scoped = readLessons(store).find(row => row.lesson_id === original.lesson_id);
+  assert.equal(scoped?.applies_to, 'general');
+  assert.equal(scoped?.skill_target, original.skill_target, 'scope does not replace the skill relation');
+  assert.equal(scoped?.success_criteria, original.success_criteria);
+});
+
+// The cloud owns criterion judgment; local application persists its supported result and exposure basis.
+test('experience graph: persists supported criterion judgments independently of session outcome', () => {
+  const config = fixtureConfig();
+  const store = makeStore(config);
+  const runId = '20261103-0200';
+  const original = { ...experienceLesson('L-effects'), status: 'accepted', judgment_id: 'j-original' };
+  appendRows(join(store, 'wiki', 'lessons.jsonl'), [original]);
+  for (const id of ['helped', 'harmful', 'unobserved']) {
+    writeJson(join(store, 'raw', 'codex', `${id}.v1.json`), {
+      trace_id: `${id}.v1`, session_id: id, version: 1, agent_id: 'codex', user_id: 'local-u',
+      source_line_range: [1, 1], records: [],
+    });
+    appendRows(join(store, 'ledger', 'usage.jsonl'), [{ type: 'shown', session_id: id, lesson_ids: [original.lesson_id] }]);
+  }
+  writeJson(join(store, 'staging', runId, 'cloud-request.json'), { catalogue: [] });
+  const judgments = ['helped', 'harmful', 'unobserved'].map(id => ({
+    trace_id: `${id}.v1`, lesson_id: original.lesson_id, followed: id === 'unobserved' ? 'unclear' : 'yes',
+    effect: id === 'unobserved' ? 'neutral' : id, basis: 'shown', expected_result: original.expected_result,
+    success_criteria: original.success_criteria, criterion_met: id === 'helped' ? 'yes' : id === 'harmful' ? 'no' : 'unclear',
+    reason: id === 'harmful' ? 'The read restored the stale report over the new report.' : 'Observed account read.',
+    action_line: 3, action_quote: 'account_read', line: 4, quote: id === 'helped' ? 'Report title and body match.' : 'Stored report differs.',
+  }));
+  const response = { schema_version: 1 as const, run_id: runId, history_acknowledged: true, history_links: [],
+    halves: [{ harness: 'codex', pages: [], proposals: [], read_judgments: judgments,
+      lessons: [{ judgment_id: 'j-matched', lesson: { ...original, status: 'candidate', applies_to: 'general',
+        did_not_prevent: true, criterion_judgment: judgments[1] } }] }] };
+  applyCloudResponse(store, config, response);
+  applyCloudResponse(store, config, response);
+  const saved = readLessons(store)[0];
+  assert.deepEqual([saved.helped, saved.harmful, saved.measured], [1, 1, true], 'supported lesson effects count once despite unknown session outcomes');
+  assert.equal(saved.status, 'accepted');
+  assert.equal(saved.applies_to, original.applies_to);
+  assert.equal(saved.judgment_id, original.judgment_id);
+  assert.equal(saved.success_criteria, original.success_criteria);
+  assert.equal(saved.did_not_prevent, true, 'accepted lessons retain the matched-moment result');
+  assert.deepEqual(saved.criterion_judgment, judgments[1]);
+  const recorded = readLedger(store).filter(row => row.type === 'lesson-judgment');
+  assert.equal(recorded.length, 3);
+  for (const item of judgments) {
+    const savedJudgment = recorded.find(row => row.trace_id === item.trace_id);
+    for (const key of ['success_criteria', 'expected_result', 'criterion_met', 'line', 'quote', 'action_line', 'action_quote', 'reason'] as const) {
+      assert.equal(savedJudgment?.[key], item[key], `${key} remains inspectable`);
+    }
+  }
+});
 
 test('a saved cloud answer resumes after a page write without duplicating items or losing judgment ids', () => {
   const config = fixtureConfig();

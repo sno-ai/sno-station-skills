@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: sno handoff-checkpoint [--repo DIR] FILE | --verify FILE.
+# Usage: sno handoff-checkpoint [--repo DIR] [FILE] | --verify FILE.
 # Keeps a progress record that a fresh agent can resume from when the working agent is gone.
 #   sno handoff-checkpoint FILE create FILE, or refresh its machine record. The record holds what
 #                               git and the file system can state: checkout, branch, head, recent
@@ -26,7 +26,7 @@ readonly END='<!-- machine-record:end -->'
 
 usage() {
     local status="${1:-2}"
-    printf 'usage: sno handoff-checkpoint [--repo DIR] FILE | --verify FILE\n' >&"$((status == 0 ? 1 : 2))"
+    printf 'usage: sno handoff-checkpoint [--repo DIR] [FILE] | --verify FILE\n' >&"$((status == 0 ? 1 : 2))"
     exit "$status"
 }
 die() { printf 'handoff-checkpoint: %s\n' "$1" >&2; exit 2; }
@@ -74,37 +74,47 @@ write_record() {  # <top> <checkpoint-number>
     done | LC_ALL=C sort | while IFS=$'\t' read -r path rest; do
         printf -- '- %s %s sha256:%s\n' "${rest%% *}" "$path" "${rest#* }"
     done
+    printf 'runtime: %s\nsession-id: %s\n' "$RUNTIME" "$SESSION_ID"
     printf '%s\n' "$END"
 }
 
-TMP='' BLOCK=''
+TMP='' BLOCK='' RUNTIME='' SESSION_ID=''
 cmd_write() {  # <file> <repo>
     local file="$1" repo="$2" top n=0
     [[ -d "$(dirname -- "$file")" ]] || die "the folder for the record does not exist: $(dirname -- "$file")"
     top="$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git work tree: $repo"
-    if [[ -e "$file" ]]; then
-        has_markers "$file" || die "not a progress record (no machine-record markers): $file"
+    if [[ -e "$file" ]] && has_markers "$file"; then
         n="$(record_field "$file" checkpoint)"; n="${n:-0}"
+        RUNTIME="$(record_field "$file" runtime)"
+        SESSION_ID="$(record_field "$file" session-id)"
+    fi
+    if [[ -n "${CODEX_THREAD_ID:-}" ]]; then
+        RUNTIME=codex; SESSION_ID="$CODEX_THREAD_ID"
+    elif [[ -n "${CLAUDE_SESSION_ID:-}" ]]; then
+        RUNTIME=claude-code; SESSION_ID="$CLAUDE_SESSION_ID"
     fi
     n=$((n + 1))
     git_state "$top" "$(rel_to_top "$top" "$file")"
     TMP="$(mktemp "${file}.XXXXXX")"; BLOCK="$(mktemp "${file}.XXXXXX")"
     trap 'rm -f -- "$TMP" "$BLOCK"' EXIT
     write_record "$top" "$n" >"$BLOCK"
-    if [[ -e "$file" ]]; then
+    if [[ -e "$file" ]] && has_markers "$file"; then
         chmod --reference="$file" -- "$TMP"
         awk -v blockfile="$BLOCK" -v start="$START" -v end="$END" '
             $0 == start { while ((getline line < blockfile) > 0) print line; skipping = 1; next }
             $0 == end { skipping = 0; next }
             !skipping { print }
         ' "$file" >"$TMP"
+    elif [[ -e "$file" ]]; then
+        chmod --reference="$file" -- "$TMP"
+        { cat -- "$BLOCK"; printf '\n'; cat -- "$file"; } >"$TMP"
     else
         chmod 644 -- "$TMP"
         {
             # shellcheck disable=SC2016  # the backticks are literal text in the record
-            printf '# Progress record\n\nRun `sno handoff-checkpoint` after every finished task, then update Done and Next.\nThe block below is rewritten by the command; everything else is yours.\n\n'
+            printf '# Progress record\n\nBefore taking the next action, keep Next and its expected result accurate. Update Done and Next at task boundaries, before an orderly stop and before compaction. Record the latest failed operation, target and error. The block below is rewritten by the command; everything else is yours.\n\n'
             cat -- "$BLOCK"
-            printf '\n## Objective and authorization\n\n## Done\n\n## Next\n\n## Decisions and assumptions\n\n## Risks and open questions\n'
+            printf '\n## Objective and authorization\n\n## Done\n\n## Next\n\n## Decisions and assumptions\n\n## Known failure\n\n## Report destination\n\n## Reach card\n\n## Risks and open questions\n'
         } >"$TMP"
     fi
     mv -- "$TMP" "$file"
@@ -167,8 +177,12 @@ while (( $# )); do
     shift
 done
 if [[ -z "$file" ]]; then
-    if (( argc == 0 )); then usage 0; fi
-    usage
+    if [[ "$mode" == write && -n "${CODEX_THREAD_ID:-${CLAUDE_SESSION_ID:-}}" ]]; then
+        file="${SNO_PROFILE_DIR:-$HOME/.sno}/station/handoff/${CODEX_THREAD_ID:-$CLAUDE_SESSION_ID}.md"
+        mkdir -p -- "$(dirname -- "$file")"
+    elif (( argc == 0 )); then usage 0
+    else usage
+    fi
 fi
 case "$mode" in
     write) cmd_write "$file" "${repo:-.}" ;;

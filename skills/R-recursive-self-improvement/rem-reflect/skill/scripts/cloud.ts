@@ -296,7 +296,14 @@ export function applyCloudResponse(store: string, config: Config, response: Clou
       const lesson = item.lesson;
       const current = readLessons(store).find(row => row.lesson_id === lesson.lesson_id);
       // A replayed cloud answer never undoes the owner's accept or reject, nor the scope chosen with it.
-      if (current?.status === 'accepted' || current?.status === 'rejected') continue;
+      if (current?.status === 'accepted' || current?.status === 'rejected') {
+        if (current.status === 'accepted' && lesson.did_not_prevent === true
+          && (current.did_not_prevent !== true || JSON.stringify(current.criterion_judgment) !== JSON.stringify(lesson.criterion_judgment))) {
+          appendRows(join(store, reflectionFiles.lessons), [{ ...current, did_not_prevent: true,
+            ...(isObject(lesson.criterion_judgment) ? { criterion_judgment: lesson.criterion_judgment } : {}) }]);
+        }
+        continue;
+      }
       if (!current?.judgment_id || current.judgment_id < item.judgment_id) {
         // Cloud citations have the store's evidence shape; the trace was validated when it was harvested.
         const evidence = Array.isArray(lesson.evidence) ? lesson.evidence as Evidence[] : [];
@@ -361,13 +368,12 @@ export function applyCloudResponse(store: string, config: Config, response: Clou
       if (!trace || !seen.has(`${trace.session_id}::${item.lesson_id}`)) throw new Error('cloud batch: read judgment has no lesson shown or read');
       const pair = `${item.trace_id}::${item.lesson_id}`;
       if (judged.has(pair)) continue;
-      appendLedger(store, { type: 'lesson-judgment', run_id: response.run_id, trace_id: item.trace_id, lesson_id: item.lesson_id,
-        followed: item.followed, effect: item.effect, basis: item.basis });
+      appendLedger(store, { ...item, type: 'lesson-judgment', run_id: response.run_id });
       judged.add(pair);
       const outcome = labels.get(traceKey(trace))?.outcome;
-      if (item.followed !== 'yes' || !['helped', 'harmful'].includes(String(item.effect))
-        || (outcome !== 'success' && outcome !== 'fail')) continue;
       const lesson = readLessons(store).find(row => row.lesson_id === item.lesson_id);
+      if (item.followed !== 'yes' || !['helped', 'harmful'].includes(String(item.effect))
+        || (!(lesson?.expected_result && lesson.success_criteria) && outcome !== 'success' && outcome !== 'fail')) continue;
       if (!lesson) continue;
       appendRows(join(store, reflectionFiles.lessons), [{ ...lesson, measured: true,
         helped: lesson.helped + Number(item.effect === 'helped'),

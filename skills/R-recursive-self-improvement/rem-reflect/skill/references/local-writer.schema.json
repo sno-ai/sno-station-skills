@@ -22,6 +22,9 @@
           "additionalProperties": false
         },
         "advice": { "type": "string", "minLength": 1 },
+        "expected_result": { "type": "string", "minLength": 1, "pattern": "\\S" },
+        "success_criteria": { "type": "string", "minLength": 1, "pattern": "\\S" },
+        "memory_fact_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "because": { "type": "string", "minLength": 1 },
         "polarity": { "enum": ["from_failure", "from_success"] },
         "evidence": {
@@ -42,7 +45,7 @@
         "reminder_line": { "oneOf": [{ "type": "string" }, { "type": "null" }] },
         "verdict_line": { "type": "integer", "minimum": 1, "description": "the line of the external verdict (from the External verdicts list in the prompt) this lesson rests on: a passed test for from_success, a failed test, check or build near the evidence for from_failure" }
       },
-      "required": ["summary", "class", "situation", "advice", "because", "polarity", "evidence", "skill_target", "reminder_line", "verdict_line"],
+      "required": ["summary", "class", "situation", "advice", "expected_result", "success_criteria", "memory_fact_ids", "because", "polarity", "evidence", "skill_target", "reminder_line", "verdict_line"],
       "additionalProperties": false
     }
   }

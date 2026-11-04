@@ -225,6 +225,8 @@ function recallCommand(rest: string[]): CommandResult {
   let session: string | undefined = opts.session;
   let cwd: string | undefined = opts.cwd;
   let prompt: string | undefined;
+  let hookEvent: string | undefined;
+  let source: string | undefined;
   let hermesHook = false;
   if (firstMessage || !session || !cwd) {
     // the SessionStart hook pipes the harness's JSON on stdin; both harnesses pass session_id and cwd
@@ -239,10 +241,13 @@ function recallCommand(rest: string[]): CommandResult {
         if (!session && typeof value.session_id === 'string') session = value.session_id;
         if (!cwd && typeof value.cwd === 'string') cwd = value.cwd;
         if (typeof value.prompt === 'string') prompt = value.prompt;
+        if (typeof value.hook_event_name === 'string') hookEvent = value.hook_event_name;
+        if (typeof value.source === 'string') source = value.source;
       }
     } catch { /* no stdin available */ }
   }
-  const result = firstMessage ? firstMessageRecall(storePath(), agent, { session_id: session, cwd, prompt })
+  // A compaction restart must resend every approved lesson, which only the first-message path does.
+  const result = firstMessage || hookEvent === 'SessionStart' && source === 'compact' ? firstMessageRecall(storePath(), agent, { session_id: session, cwd, prompt, hook_event_name: hookEvent, source })
     : recall(storePath(), agent, { session_id: session, cwd }, new Date(), listedHeartbeat(), setupTimerOn());
   if (hermesHook) return { ...result, lines: result.code === 0 ? [JSON.stringify({ context: result.lines.join('\n') })] : [] };
   return result;

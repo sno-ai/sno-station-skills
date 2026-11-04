@@ -23,6 +23,7 @@ class ReminderWriter extends FixtureBackend {
       summary: 'Read back the report', class: 'EXECUTION_LAPSE',
       situation: { task_type: 'report', trigger: 'report written', tools: [] },
       advice: 'Read the report back.', because: 'The owner corrected an unchecked report.', polarity: 'from_failure',
+      expected_result: 'The stored report is the one written.', success_criteria: 'Read back the matching report title and body.', memory_fact_ids: [],
       evidence: [{ line_start: line, line_end: line, quote: 'No, read the report back' }],
       skill_target: target, reminder_line: 'Keep the local reminder.', verdict_line: verdictLine,
     } }) };

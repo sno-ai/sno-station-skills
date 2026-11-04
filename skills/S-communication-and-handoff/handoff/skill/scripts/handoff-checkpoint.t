@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Behaviour test for handoff-checkpoint: real git work trees, real files, real hashes.
 set -Eeuo pipefail
+unset CLAUDE_SESSION_ID CODEX_THREAD_ID
 
 command_path="$(realpath -- "${1:-$(dirname -- "${BASH_SOURCE[0]}")/handoff-checkpoint}")"
 root="$(mktemp -d)"
@@ -19,6 +20,19 @@ new_repo() {
     git_ add tracked.txt
     git_ commit -q -m 'first commit'
 }
+
+plain_brief() {
+    new_repo plain-work
+    record="$root/plain-brief.md"
+    printf '# Current task\n\n## Next\nCompute the sum from input.txt.\n\n## Known failure\nRead missing.txt: no such file.\n' >"$record"
+    cp "$record" "$root/plain-before.md"
+    status="$(cd -- "$repo" && run "$record")"
+    [[ "$status" == 0 ]] && grep -qx '<!-- machine-record:start -->' "$record" || fail 'readable task without machine markers can be refreshed'
+    sed '1,/<!-- machine-record:end -->/d' "$record" | tail -n +2 >"$root/plain-after.md"
+    cmp -s "$root/plain-before.md" "$root/plain-after.md" || fail 'adding machine information changed the readable task'
+    ok 'existing readable brief receives machine information without losing any original byte'
+}
+if [[ "${2:-}" == plain-brief ]]; then plain_brief; printf '1..%s\n' "$count"; exit 0; fi
 
 # usage
 mkdir -p -- "$root/empty"
@@ -44,10 +58,10 @@ want_new="$(sha256sum <"$repo/new file.txt" | cut -d' ' -f1)"
 want_mod="$(sha256sum <"$repo/tracked.txt" | cut -d' ' -f1)"
 grep -Fq -- "- ?? new file.txt sha256:$want_new" "$record" || fail 'untracked file (with a space) recorded with its hash'
 grep -Fq -- "- M tracked.txt sha256:$want_mod" "$record" || fail 'modified file recorded with its hash'
-for heading in 'Objective and authorization' 'Done' 'Next' 'Decisions and assumptions' 'Risks and open questions'; do
+for heading in 'Objective and authorization' 'Done' 'Next' 'Decisions and assumptions' 'Known failure' 'Report destination' 'Reach card' 'Risks and open questions'; do
     grep -q "^## $heading\$" "$record" || fail "agent section '$heading' exists"
 done
-ok 'create writes the machine record and the five agent sections'
+ok 'create writes the machine record and task, failure, destination and card sections'
 
 # refresh keeps every byte outside the record
 python3 - "$record" <<'PY'
@@ -115,5 +129,18 @@ status="$(run --verify "$root/plain.md")"
 status="$(cd -- "$root/empty" && run "$root/nogit.md")"
 [[ "$status" == 2 && "$(wc -l <"$root/err")" == 1 && ! -e "$root/nogit.md" ]] || fail 'outside a git work tree it exits 2 and writes nothing'
 ok 'unusable input exits 2 with one line'
+
+# Default session location and exact vendor identity share the existing record format.
+profile="$root/profile"
+status="$(cd -- "$repo" && SNO_PROFILE_DIR="$profile" CLAUDE_SESSION_ID=claude-test run)"
+default="$profile/station/handoff/claude-test.md"
+[[ "$status" == 0 && -f "$default" ]] || fail 'known session with no file writes its default record'
+grep -qx 'runtime: claude-code' "$default" && grep -qx 'session-id: claude-test' "$default" || fail 'default record has the exact Claude identity'
+status="$(cd -- "$repo" && run "$default")"
+[[ "$status" == 0 ]] && grep -qx 'session-id: claude-test' "$default" || fail 'refresh without optional metadata preserves the exact identity'
+status="$(cd -- "$repo" && CODEX_THREAD_ID=codex-test run "$root/codex.md")"
+[[ "$status" == 0 ]] && grep -qx 'runtime: codex' "$root/codex.md" && grep -qx 'session-id: codex-test' "$root/codex.md" || fail 'explicit record records the exact Codex identity'
+ok 'default session record and explicit record preserve exact native session identities'
+plain_brief
 
 printf '1..%s\n' "$count"

@@ -1,12 +1,7 @@
 #!/usr/bin/env bash
-# rotate-agent-resume — start a fresh agent on a tmux window and point it at a progress record,
-# for the case where the working agent is already gone (quota refused, crash, closed window).
-# One command replaces the manual init / spawn / call steps. Each step prints `OK <step>`, or
-# `FAIL <step>: <what> -> <what to do>` and stops; the last line of a clean run is
-# `RESUMED seat=<address> verify=MATCH|DRIFT`. A label resumes once: the lock is
-# ${XDG_STATE_HOME:-$HOME/.local/state}/rotate-agent/<work>.resume, kept whenever a receiver exists.
-# Exit 0 resumed (or usage printed for no arguments / --help), 1 failed, 2 bad usage. Needs sno (Reach), jq, tmux and the handoff skill's
-# `sno handoff-checkpoint` (or a command named with --checkpoint-cmd).
+# Continue an exact native session, or hand the readable progress record to a new Reach receiver.
+# Exit 0: a conversation continued/rebuilt (the next action may remain unfinished).
+# Exit 1: no recovery completed, lost task data, or an unresolved release. Exit 2: usage.
 set -Eeuo pipefail
 
 usage() {
@@ -14,169 +9,184 @@ usage() {
   cat >&"$((status == 0 ? 1 : 2))" <<'USAGE'
 usage: sno rotate-agent-resume --to claude-code|codex|cursor|hermes|openclaw [--model <M>] [--provider <P>] --cwd <checkout> --checkpoint <progress-record>
                                --work <label> [--report-to <seat-address>] [--checkpoint-cmd <cmd>]
-prints one line per step: OK <step> | FAIL <step>: <what> -> <what to do> | RESUMED seat=<address> verify=MATCH|DRIFT
+Reports resumed, rebuilt or lost separately from next_action=completed|unfinished|blocked.
+A released receiver keeps ownership even when cleanup or reporting fails.
 USAGE
   exit "$status"
 }
-
 MODEL="" PROVIDER="" TO="" CWD="" CHECKPOINT="" WORK="" REPORT_TO="" CKPT_CMD=(sno handoff-checkpoint)
 (( $# > 0 )) || usage 0
-while [[ $# -gt 0 ]]; do
+while (( $# )); do
   case "$1" in
-    --model) MODEL="${2:-}"; shift 2 ;;
-    --provider) PROVIDER="${2:-}"; shift 2 ;;
-    --to) TO="${2:-}"; shift 2 ;;
-    --cwd) CWD="${2:-}"; shift 2 ;;
-    --checkpoint) CHECKPOINT="${2:-}"; shift 2 ;;
-    --work) WORK="${2:-}"; shift 2 ;;
-    --report-to) REPORT_TO="${2:-}"; shift 2 ;;
-    --checkpoint-cmd) CKPT_CMD=("${2:-}"); shift 2 ;;
+    --model|--provider|--to|--cwd|--checkpoint|--work|--report-to|--checkpoint-cmd)
+      (( $# >= 2 )) && [[ -n "$2" ]] || usage
+      case "$1" in
+        --model) MODEL="$2" ;; --provider) PROVIDER="$2" ;; --to) TO="$2" ;;
+        --cwd) CWD="$2" ;; --checkpoint) CHECKPOINT="$2" ;; --work) WORK="$2" ;;
+        --report-to) REPORT_TO="$2" ;; --checkpoint-cmd) CKPT_CMD=("$2") ;;
+      esac
+      shift 2 ;;
     -h|--help) usage 0 ;;
     *) printf 'rotate-agent-resume: unknown option %s\n' "$1" >&2; usage ;;
   esac
 done
 [[ "$TO" =~ ^(claude-code|codex|cursor|hermes|openclaw)$ && "$WORK" =~ ^[a-z0-9][a-z0-9-]*$ && -n "$CWD" && -n "$CHECKPOINT" ]] || usage
 [[ "$TO" != hermes && "$TO" != openclaw || ( -n "$MODEL" && -n "$PROVIDER" ) ]] || usage
-KIND="$TO"
-case "$TO" in claude-code) KIND=claude ;; cursor) KIND=cursor-agent ;; esac
-HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-DEADLINE=$((SECONDS + 295))
-bounded() {
-  local cap="$1" left=$((DEADLINE - SECONDS)); shift
-  (( left > 0 )) || return 1
-  (( left >= cap )) || cap="$left"
-  timeout "$cap" "$@"
-}
-# The receiver starts in $CWD, so a relative path would mean something else there: use absolute paths throughout.
 CWD="$(realpath -m -- "$CWD")"
 CHECKPOINT="$(realpath -m -- "$CHECKPOINT")"
-
-HOST="$(hostname | tr '[:upper:]' '[:lower:]')"
-readonly SEAT="resume.$WORK@$HOST"
-readonly ROOT="${SNO_REACH_STATE_ROOT:-${SNO_REACH_ROOT:-$HOME/.local/state/sno-reach}}"
-readonly LOCK_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/rotate-agent"
-readonly LOCK="$LOCK_DIR/$WORK.resume"
-readonly STARTUP_SECONDS=90
-
-ok() { printf 'OK %s\n' "$1"; }
-FAIL_KEEP_LOCK=0 LOCK_OWNED=0
-fail() { # step what what-to-do
-  printf 'FAIL %s: %s -> %s\n' "$1" "$2" "$3"
+HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${SNO_REACH_STATE_ROOT:-${SNO_REACH_ROOT:-$HOME/.local/state/sno-reach}}"
+DEADLINE=$((SECONDS + 295))
+bounded() {
+  local seconds="$1" left=$((DEADLINE - SECONDS)); shift
+  (( left > 0 )) || return 124
+  (( left >= seconds )) || seconds="$left"
+  timeout "$seconds" "$@"
+}
+log_failure() {
+  printf 'rotate-agent-resume: operation=%s target=%s error=%s; %s\n' "$1" "$2" "$3" "$4" >&2
+}
+field() { sed -n '/^<!-- machine-record:start -->$/,/^<!-- machine-record:end -->$/{s/^'"$1"': //p;}' "$CHECKPOINT" | head -n1; }
+section() { awk -v heading="## $1" '$0 == heading {inside=1; next} /^## / {inside=0} inside && NF {print}' "$CHECKPOINT"; }
+[[ -r "$CHECKPOINT" ]] || { printf 'lost next_action=blocked missing=readable-brief path=%s\n' "$CHECKPOINT"; exit 1; }
+[[ -d "$CWD" ]] || { log_failure checkout "$CWD" 'directory unavailable' 'no recovery completed; brief retained'; exit 1; }
+recorded="$(field checkout)"
+if [[ -n "$recorded" && "$(realpath -m -- "$recorded")" != "$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$CWD")" ]]; then
+  log_failure checkout "$CWD" "brief names $recorded" 'no recovery completed; use the recorded checkout'
   exit 1
-}
-cleanup() {
-  local rc=$?
-  trap - EXIT
-  if (( rc != 0 && FAIL_KEEP_LOCK == 0 && LOCK_OWNED == 1 )); then rm -f -- "$LOCK"; fi
-  exit "$rc"
-}
-trap cleanup EXIT
-
-# 1. Tools, the checkout, and a progress record the checkout can be compared with.
-for tool in sno jq tmux timeout "${CKPT_CMD[0]}"; do
-  command -v "$tool" >/dev/null || fail tools "$tool is not on PATH" "install it (sno setup installs sno, with handoff-checkpoint as a sno subcommand)"
-done
-[[ -d "$CWD" ]] && git -C "$CWD" rev-parse --show-toplevel >/dev/null 2>&1 || fail checkout "$CWD is not a git work tree" "pass the checkout the working agent used"
+fi
+original="$(field runtime)"; session="$(field session-id)"
+[[ "$original" != claude ]] || original=claude-code
+verdict=unknown
+if [[ "$original" == claude-code || "$original" == codex ]] && command -v sno >/dev/null; then
+  quota_status=0
+  quota="$(bounded 60 sno subscription-quota-check --agent "$original" --json 2>&1)" || quota_status=$?
+  verdict="$(jq -r '.vendor.verdict // "unknown"' <<<"$quota" 2>/dev/null)" || verdict=unknown
+  if (( quota_status != 0 )); then
+    log_failure quota "$original" "$quota" "returned verdict=$verdict; unknown/authentication is not exhausted quota"
+  fi
+fi
+native_prompt="Continue the interrupted authorized task in this exact conversation. Read $CHECKPOINT for the durable next action, expected result and latest failed operation. Reconcile actual file/tool results before repeating work; memory only supplements the owner's instructions. Complete the unfinished action when possible and report its actual result and the earlier failure. End with CONTINUITY_ACTION completed, CONTINUITY_ACTION unfinished or CONTINUITY_ACTION blocked on its own line. Do not call a mere acknowledgement completion. Keep the same progress record accurate before actions and at task boundaries."
+[[ -z "$REPORT_TO" ]] || native_prompt+=" Report to $REPORT_TO."
+if [[ -n "$session" && "$verdict" != wait && ( "$original" == claude-code || "$original" == codex ) ]]; then
+  native=()
+  case "$original" in
+    claude-code) native=(claude -p --resume "$session" "$native_prompt") ;;
+    codex) native=(codex exec resume "$session" "$native_prompt") ;;
+  esac
+  if command -v "${native[0]}" >/dev/null; then
+    native_status=0
+    answer="$(cd -- "$CWD" && bounded 120 "${native[@]}" 2>&1)" || native_status=$?
+    printf '%s\n' "$answer"
+    if (( native_status == 0 )) && [[ -n "${answer//[[:space:]]/}" ]]; then
+      action="$(sed -n 's/^CONTINUITY_ACTION \(completed\|unfinished\|blocked\)$/\1/p' <<<"$answer" | tail -n1)"
+      printf 'resumed next_action=%s session=%s\n' "${action:-unfinished}" "$session"
+      exit 0
+    fi
+    log_failure native-resume "$session" "exit $native_status: ${answer:-empty receiver response}" 'trying the saved brief in a new conversation'
+  else
+    log_failure native-resume "$session" "${native[0]} unavailable" 'trying a usable receiver with the saved brief'
+  fi
+elif [[ "$verdict" == wait ]]; then
+  printf 'quota exhausted agent=%s; native resume and same-vendor rebuild skipped\n' "$original" >&2
+else
+  log_failure native-resume "$CHECKPOINT" 'exact native session identity unavailable' 'rebuilding from the readable brief'
+fi
+if [[ -z "$(section 'Objective and authorization')" || -z "$(section Next)" ]]; then
+  printf 'lost next_action=blocked missing=objective-or-next-action path=%s\n' "$CHECKPOINT"
+  exit 1
+fi
+# Verification is useful context, never a prerequisite for reading available task facts.
 verify_status=0
 verify_out="$("${CKPT_CMD[@]}" --verify "$CHECKPOINT" 2>&1)" || verify_status=$?
-(( verify_status <= 1 )) || fail checkpoint "${verify_out%%$'\n'*}" "point --checkpoint at a record made by sno handoff-checkpoint"
-verify="MATCH"
-(( verify_status == 0 )) || verify="DRIFT"
-# The record belongs to one checkout; the receiver must work in that one, not in another working copy.
-recorded="$(sed -n '/^<!-- machine-record:start -->$/,/^<!-- machine-record:end -->$/s/^checkout: //p' -- "$CHECKPOINT" | head -n1)"
-actual="$(git -C "$CWD" rev-parse --show-toplevel)"
-[[ "$(realpath -m -- "$recorded")" == "$(realpath -m -- "$actual")" ]] ||
-  fail checkout "the progress record belongs to $recorded but --cwd is $actual" "pass --cwd $recorded, or point --checkpoint at the record of $actual"
-ok checkpoint
-
-# 2. Once per label: the lock file is created atomically before anything starts.
-mkdir -p -- "$LOCK_DIR"
-if ! ( set -o noclobber; printf 'seat=%s state=starting at=%s\n' "$SEAT" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$LOCK" ) 2>/dev/null; then
-  FAIL_KEEP_LOCK=1
-  existing="$(sed -n 's/.*seat=\([^ ]*\).*/\1/p' "$LOCK" 2>/dev/null | head -n1)"
-  fail once "'$WORK' was already resumed as ${existing:-an earlier seat} ($(cat "$LOCK" 2>/dev/null))" "read it with: sno reach watch ${existing:-$SEAT}; use a new --work label for a new resume"
+if (( verify_status > 1 )); then
+  log_failure verify "$CHECKPOINT" "$verify_out" 'receiver will reconcile available files and task records'
 fi
-LOCK_OWNED=1
-ok once
-
-# 3. The receiver: a seat on a tmux window in the checkout, past its startup turn.
-bounded 30 sno reach init --as "$SEAT" --name resume >/dev/null 2>&1 || fail init "sno reach init --as $SEAT refused" "run it by hand and read its message"
-spawn=(sno reach spawn "$KIND" --as "$SEAT" --cwd "$CWD" --window)
-[[ -z "$MODEL" ]] || spawn+=(--model "$MODEL")
-[[ -z "$PROVIDER" ]] || spawn+=(--provider "$PROVIDER")
-spawned="$(bounded 150 "${spawn[@]}" 2>&1)" ||
-  fail spawn "sno reach spawn $TO --window refused: ${spawned##*$'\n'}" "fix what it names, then rerun"
-FAIL_KEEP_LOCK=1
-sed -i 's/state=starting/state=started/' "$LOCK"
-pane="$(jq -r '.identity.value' "$ROOT/$SEAT/reachable.json" 2>/dev/null || true)"
-bounded "$STARTUP_SECONDS" sno reach watch "$SEAT" --idle 10 --timeout "$STARTUP_SECONDS" >/dev/null 2>&1 ||
-  fail start "$TO kept printing for ${STARTUP_SECONDS}s after spawn" "open $TO in $CWD by hand and see what it is doing; the seat $SEAT exists"
-if [[ -n "$pane" ]] && tmux capture-pane -p -t "$pane" 2>/dev/null | grep -qi 'trust'; then
-  fail trust "$TO stopped at its trust prompt in $CWD" "open $TO once in $CWD by hand, accept the prompt, then read the seat: sno reach watch $SEAT"
-fi
-# A receiver can be quiet for ten seconds while it still loads its model; text typed then is lost.
-if [[ -n "$pane" ]]; then
-  for _ in $(seq 30); do tmux capture-pane -p -t "$pane" 2>/dev/null | grep -qi 'loading' || break; bounded 3 sleep 2 || break; done
-fi
-ok receiver
-
-# 4. Tell it what to do, and wait for a fresh acknowledgement line, not an echo of the prompt.
-nonce="$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
-prompt="You are taking over a task another agent could not finish (it stopped for quota or crashed).
-Checkout: $CWD
-Progress record: $CHECKPOINT
-1. Read the whole progress record. Its Next list is your task list. Done is finished: do not redo it.
-2. The record was just compared with the checkout. The result was:
-$verify_out
-   If it shows DRIFT, the previous agent worked after its last checkpoint: read those commits and files first (git log, git diff), decide what they finished, and add that to Done before you continue.
-3. Print one line, on its own: RESUME_ACK $nonce. Remain paused, make no task edits until RESUME_RELEASE $nonce.
-4. After that release, continue from Next in this checkout. After every finished task run: ${CKPT_CMD[*]} $CHECKPOINT   and update Done and Next in the record.
-5. When every task is done print DONE_$WORK on its own line. If a task needs the owner, print BLOCKED_$WORK <reason> on its own line instead; never print DONE_$WORK while a task waits on the owner."
-[[ -z "$REPORT_TO" ]] || prompt+=$'\n'"Report the final result to $REPORT_TO."
-# Codex takes the Enter that follows a long pasted prompt as part of the paste, so the prompt can sit unsent
-# in its input box. While the call waits, press Enter every 5 seconds; on an empty or busy box it does nothing.
-call_limit=$((DEADLINE - SECONDS - 30))
-(( call_limit <= 280 )) || call_limit=280
-(( call_limit > 0 )) || fail acknowledge "operation deadline reached before RESUME_ACK" "try the next candidate"
-bounded "$call_limit" sno reach call "$SEAT" "$prompt" --expect "RESUME_ACK $nonce" --timeout "$call_limit" >"$LOCK.answer" 2>"$LOCK.error" &
-call_pid=$!
-if [[ "$TO" == codex && -n "$pane" ]]; then
-  while kill -0 "$call_pid" 2>/dev/null && (( SECONDS < DEADLINE )); do
-    sleep 5
-    kill -0 "$call_pid" 2>/dev/null || break
-    bounded 5 tmux send-keys -t "$pane" Enter 2>/dev/null || true
+rebuild() {
+  local agent="$1" model="$2" provider="$3" kind seat spawned nonce ready release_status receipt actual_provider current
+  kind="$agent"; case "$agent" in claude-code) kind=claude ;; cursor) kind=cursor-agent ;; esac
+  command -v "$kind" >/dev/null || { log_failure rebuild "$agent" 'CLI unavailable' 'brief retained'; return 1; }
+  for tool in sno jq; do
+    command -v "$tool" >/dev/null || { log_failure rebuild "$agent" "$tool unavailable" 'brief retained'; return 1; }
   done
-fi
-if ! wait "$call_pid"; then
-  cat "$LOCK.error" >&2
-  printf 'rotate-agent-resume: operation=acknowledge seat=%s command=call error=no RESUME_ACK; receiver remains paused\n' "$SEAT" >&2
-  FAIL_KEEP_LOCK=0
-  fail acknowledge "$TO did not print RESUME_ACK" "try the next candidate; inspect the paused seat $SEAT"
-fi
-if [[ "$TO" == hermes || "$TO" == openclaw ]]; then
-  receipt="$(jq -er 'select(.verified == true) | .deliveryReceipt | select(type == "string" and length > 0)' "$LOCK.answer")" || receipt=''
-  actual_provider=''
-  if [[ -n "$receipt" ]]; then
-    actual_provider="$(bounded 20 "$HERE/rotate-agent-answer-provider" --agent "$TO" --seat "$SEAT" --receipt "$receipt")" || actual_provider=''
+  seat="resume.$WORK-$agent@$(hostname | tr '[:upper:]' '[:lower:]')"
+  # Reach's existing seat/receipt records are the ownership record; there is no second once file.
+  if [[ -e "$ROOT/$seat/reachable.json" ]]; then
+    log_failure rebuild "$seat" 'receiver already exists' 'inspect it before any further transfer'
+    return 2
   fi
-  if [[ -z "$actual_provider" || "$actual_provider" != "$PROVIDER" ]]; then
-    printf 'rotate-agent-resume: operation=acknowledge seat=%s command=call error=wrong-or-unknown-provider expected=%s actual=%s; receiver remains paused\n' "$SEAT" "$PROVIDER" "${actual_provider:-unknown}" >&2
-    FAIL_KEEP_LOCK=0
-    fail acknowledge "receiver provider was ${actual_provider:-unknown}, expected $PROVIDER" "try the next candidate; inspect the paused seat $SEAT"
+  bounded 30 sno reach init --as "$seat" --name resume >/dev/null || return 1
+  local spawn=(sno reach spawn "$kind" --as "$seat" --cwd "$CWD" --window)
+  [[ -z "$model" ]] || spawn+=(--model "$model")
+  [[ -z "$provider" ]] || spawn+=(--provider "$provider")
+  if ! spawned="$(bounded 90 "${spawn[@]}" 2>&1)"; then
+    log_failure spawn "$seat" "$spawned" 'no release sent; trying a usable fallback'
+    return 1
   fi
-elif [[ "$TO" == cursor ]]; then
-  current="$(bounded 20 sno subscription-quota-check --agent cursor --seat "$SEAT" --json)" || current='{}'
-  if [[ "$(jq -r '.model // empty' <<<"$current")" != "$MODEL" ||
-        ( -n "$PROVIDER" && "$(jq -r '.provider // empty' <<<"$current")" != "$PROVIDER" ) ]]; then
-    FAIL_KEEP_LOCK=0
-    fail acknowledge "Cursor did not answer on $MODEL" "try the next candidate"
+  if ! bounded 60 sno reach watch "$seat" --idle 10 --timeout 60 >/dev/null; then
+    log_failure startup "$seat" 'startup did not settle' 'receiver remains without task release'
+    return 1
+  fi
+  nonce="$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
+  local prompt="You are rebuilding interrupted work in a NEW conversation; the original conversation was lost. Checkout: $CWD
+Progress record: $CHECKPOINT
+Read the COMPLETE record, including objective/authorization, exclusions, Done, Next and expected result, Known failure, Report destination and any original Reach work card. Do not redo Done. Reconcile actual file/tool results with the record before repeating actions. Available checkout comparison:
+$verify_out
+Use existing scoped memory retrieval for this checkout/session; retrieval failure does not discard the brief. Preserve the original work-card chain and Reply-To; call mail is transport-only, never accept or complete call mail. If this is card-backed work, the recovery initiator must send you your actual receiver card under the same X-Work and continuing Reply-To before release; report its real Message-ID and your recipient. Do not fabricate a response/cancellation from the absent sender. If no original card exists, keep the actual owner instruction and destination; do not invent a card.
+Confirm the exact unfinished next action is recoverable, then output HANDOFF_READY $nonce on its own line. Remain paused and make no task edits until explicit HANDOFF_RELEASE $nonce. If essential facts cannot be recovered, report what is missing and output HANDOFF_LOST $nonce instead."
+  if ! ready="$(bounded 90 sno reach call "$seat" "$prompt" --expect "HANDOFF_(READY|LOST) $nonce" --timeout 90 2>&1)"; then
+    log_failure readiness "$seat" "$ready" 'receiver remains paused; no release sent'
+    return 1
+  fi
+  printf '%s\n' "$ready"
+  if grep -q "HANDOFF_LOST $nonce" <<<"$ready"; then
+    printf 'lost next_action=blocked seat=%s path=%s\n' "$seat" "$CHECKPOINT"
+    return 2
+  fi
+  if [[ "$agent" == hermes || "$agent" == openclaw ]]; then
+    receipt="$(jq -er 'select(.verified == true) | .deliveryReceipt | strings | select(length > 0)' <<<"$ready")" || receipt=''
+    actual_provider=''
+    if [[ -n "$receipt" ]]; then
+      actual_provider="$(bounded 20 "$HERE/rotate-agent-answer-provider" --agent "$agent" --seat "$seat" --receipt "$receipt")" || actual_provider=''
+    fi
+    if [[ -z "$actual_provider" || "$actual_provider" != "$provider" ]]; then
+      log_failure readiness "$seat" "wrong-or-unknown-provider expected=$provider actual=${actual_provider:-unknown}" 'receiver remains paused'
+      return 1
+    fi
+  elif [[ "$agent" == cursor ]]; then
+    current="$(bounded 20 sno subscription-quota-check --agent cursor --seat "$seat" --json)" || current='{}'
+    if [[ "$(jq -r '.model // empty' <<<"$current")" != "$model" || ( -n "$provider" && "$(jq -r '.provider // empty' <<<"$current")" != "$provider" ) ]]; then
+      log_failure readiness "$seat" 'Cursor answer does not match selected model/provider' 'receiver remains paused'
+      return 1
+    fi
+  fi
+  local release="HANDOFF_RELEASE $nonce. The recovery initiator releases the owner's authorized task from $CHECKPOINT; the sender is already stopped, so this is not a fabricated sender response. Correlate your real receiver work card/recipient when present. Before any task write, emit HANDOFF_RELEASED $nonce as a standalone line. Then perform the unfinished action, mention the earlier failed operation and report outcome=rebuilt, original_conversation=lost and next_action=completed|unfinished|blocked with its actual result. Before the first task action, run ${CKPT_CMD[*]} with no FILE in your session to create your default current record. Copy every human-readable task section from $CHECKPOINT into that record, keeping its freshly written machine runtime/session identity. Keep that single current record accurate before actions and at task boundaries; retain $CHECKPOINT as readable prior history. Later prompt/compaction injection reads your session record. Auxiliary writer/retrieval/report failures are logged and do not revoke your task ownership. Report to ${REPORT_TO:-the continuing destination in the brief}."
+  release_status=0
+  bounded 90 sno reach call "$seat" "$release" --expect "^HANDOFF_RELEASED $nonce$" --timeout 90 || release_status=$?
+  if (( release_status != 0 )); then
+    log_failure release "$seat" "receipt missing (exit $release_status)" 'transfer unresolved; inspect this receiver and Reach records; do not start another receiver'
+    return 2
+  fi
+  printf 'rebuilt next_action=unfinished seat=%s original_conversation=lost\n' "$seat"
+  return 0
+}
+preferred="$TO"
+if [[ "$original" == claude-code || "$original" == codex ]]; then
+  if [[ "$verdict" != wait ]]; then preferred="$original"
+  elif [[ "$TO" == "$original" ]]; then
+    if [[ "$original" == claude-code ]]; then preferred=codex; else preferred=claude-code; fi
   fi
 fi
-release_limit=$((DEADLINE - SECONDS)); (( release_limit <= 280 )) || release_limit=280
-(( release_limit > 0 )) || fail release "deadline reached; acknowledgement verified but receiver paused" "inspect $SEAT before any retry"
-bounded "$release_limit" sno reach call "$SEAT" "RESUME_RELEASE $nonce. Print RESUME_RELEASED $nonce, then continue the authorized task from the progress record." --expect "RESUME_RELEASED $nonce" --timeout "$release_limit" >/dev/null ||
-  fail release "release receipt missing; the receiver may own the task" "inspect $SEAT; do not start a second receiver"
-rm -f -- "$LOCK.answer" "$LOCK.error"
-sed -i "s/state=started/state=resumed verify=$verify/" "$LOCK"
-ok acknowledge
-printf 'RESUMED seat=%s verify=%s\n' "$SEAT" "$verify"
+status=0
+if [[ "$preferred" == "$TO" ]]; then rebuild "$preferred" "$MODEL" "$PROVIDER" || status=$?
+else rebuild "$preferred" '' '' || status=$?
+fi
+(( status != 0 )) || exit 0
+(( status != 2 )) || exit 1
+if [[ "$verdict" != wait && "$preferred" != "$TO" ]]; then
+  status=0; rebuild "$TO" "$MODEL" "$PROVIDER" || status=$?
+  (( status != 0 )) || exit 0
+  (( status != 2 )) || exit 1
+fi
+printf 'no recovery completed next_action=blocked reason=no-usable-runtime; other-vendor takeover skipped when unavailable; brief retained at %s\n' "$CHECKPOINT"
+exit 1

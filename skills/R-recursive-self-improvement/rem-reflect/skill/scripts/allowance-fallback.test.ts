@@ -65,6 +65,7 @@ class Writer extends FixtureBackend {
       summary: 'Read back the report', class: 'EXECUTION_LAPSE',
       situation: { task_type: 'report', trigger: 'report written', tools: [] },
       advice: 'Read the report back before declaring success.', because: 'The owner corrected an unchecked report.',
+      expected_result: 'The stored report is the one written.', success_criteria: 'Read back the matching report title and body.', memory_fact_ids: [],
       polarity: 'from_failure', evidence: [{ line_start: line, line_end: line, quote: 'No, read the report back' }],
       skill_target: null, reminder_line: null, verdict_line: verdictLine,
     } }) };

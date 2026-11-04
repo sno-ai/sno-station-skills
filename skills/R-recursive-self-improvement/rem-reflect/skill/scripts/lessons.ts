@@ -10,6 +10,7 @@ import { privateDirectory } from './store.ts';
 
 export interface LessonInput {
   situation: Scenario; advice: string; because: string; applies_to: string;
+  expected_result?: string; success_criteria?: string; memory_fact_ids?: string[];
   polarity: 'from_failure' | 'from_success'; evidence: Evidence[]; counter_examples: CounterExamples;
 }
 export interface Lesson extends LessonInput {
@@ -18,6 +19,17 @@ export interface Lesson extends LessonInput {
   project_id: string; agent_id: string; user_id: string; skill_target: string | null; scenario: Scenario;
   listed?: boolean; judgment_id?: string; verification?: { accepted?: boolean };
   verdict_ref?: VerdictRef; trigger_match?: TriggerMatch | null;
+  did_not_prevent?: boolean; criterion_judgment?: Record<string, unknown>;
+}
+
+export function lessonContext(lesson: Lesson): string {
+  const fields: [string, string | undefined][] = [
+    ['situation', JSON.stringify(lesson.situation)], ['advice', lesson.advice],
+    ['expected_result', lesson.expected_result], ['success_criteria', lesson.success_criteria],
+    ['memory_fact_ids', lesson.memory_fact_ids === undefined ? undefined : JSON.stringify(lesson.memory_fact_ids)],
+    ['skill_target', JSON.stringify(lesson.skill_target)],
+  ];
+  return fields.flatMap(([key, value]) => value === undefined ? [] : [message('lessonField', { key, value })]).join('\n');
 }
 export function appendRows(path: string, rows: readonly unknown[]): void {
   if (!rows.length) return;

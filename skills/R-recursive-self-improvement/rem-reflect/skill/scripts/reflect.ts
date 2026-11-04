@@ -12,7 +12,7 @@ import { labelHalf, readLabels } from './labeler.ts';
 import { writeLocally } from './local-writer.ts';
 import { saveLocalSettings } from './local-settings.ts';
 import { readLedger } from './ledger.ts';
-import { readLessons } from './lessons.ts';
+import { lessonContext, readLessons } from './lessons.ts';
 import type { Lesson } from './lessons.ts';
 import { eligibleTraces } from './sampling.ts';
 import { writeJson } from './store.ts';
@@ -205,6 +205,7 @@ function signalLines(store: string, runId: string, now: Date): string[] {
 function decisionLines(lessons: readonly Lesson[], proposals: readonly Record<string, unknown>[]): string[] {
   return [`Lessons eligible for decision: ${lessons.length}`, ...lessons.flatMap(lesson => [
     `${lesson.lesson_id}: ${lesson.advice}`,
+    lessonContext(lesson),
     `sno rem-reflect accept ${lesson.lesson_id}`,
     `sno rem-reflect accept ${lesson.lesson_id} --all-projects`,
   ]),

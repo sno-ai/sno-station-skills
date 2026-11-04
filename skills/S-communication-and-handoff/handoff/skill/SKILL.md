@@ -39,8 +39,8 @@ Message-ID are Reach terms, defined in the `reach` skill.
   destination session where B will show its final result to the owner. Do not invent an
   original card, acceptance or cancellation just to fit a mailbox sequence.
 - **Sender gone:** A already stopped (quota refused, crash, closed window) and cannot take part.
-  Nothing can be verified with A and there is no A to release, so the procedure below does not apply;
-  follow "When the sender is gone" instead. It only works if A kept a progress record.
+  The recovery initiator uses the recorded owner authorization to drive the same receiver
+  release path; it never fabricates a response from A. Follow "When the sender is gone".
 
 Use real addresses and the existing checkout. Preserve owner-locked decisions, exclusions and the repository's own rules.
 No second owner approval is needed for already authorized work. Do not create or switch checkouts as a side
@@ -59,6 +59,10 @@ effect of handoff. Secrets and raw credentials do not belong in the brief.
    original work card exists.
    End with the standalone marker `<!-- AGENT_CUTOVER_EOF -->`.
    Measure the exact byte count and SHA-256; reread the tail before delivery.
+   Keep Next accurate before undertaking it, including its expected observable result.
+   Save the most recent failed operation, target and error, the continuing report destination,
+   and the exact vendor session identity when available. Update Done and Next at real task
+   boundaries, before an orderly interruption and before Claude compaction.
 2. **Initialize before spawn.** Select the requested kind/model/provider, including a quota pick candidate, or A's kind
    when unspecified; choose a fresh address B and display name. Run `sno reach init --as <B> --name <display>`
    and verify success **before** `sno reach spawn <agent> --as <B> --cwd <checkout> --window`.
@@ -73,6 +77,12 @@ effect of handoff. Secrets and raw credentials do not belong in the brief.
    initialize/register A as needed. Direct calls need no A card; inspect B before retrying.
 3. **Verify readiness without writing.** Send the short launcher below through
    `sno reach call <B> <launcher> --expect <ready-nonce> --timeout 280`.
+   Normal call stores the complete launcher as `X-Type: call` mail and submits one short
+   `REACH-RING` cue, not its full text, to the terminal. B reads the addressed inbox and
+   exact mail file, then outputs its transport delivery receipt before following the launcher.
+   Call mail is transport-only: never accept or complete it. Dismiss handled call mail;
+   keep the original task card and its Reply-To for acceptance and completion.
+   Mail storage or a cue alone never proves readiness, release or task completion.
    B reads the whole brief, verifies bytes, SHA-256 and end marker, then returns the fresh
    readiness nonce, measured digest and intended checkout. B makes no task edits. A checks
    new receiver output, not a prompt echo. Before release, a picked Hermes/OpenClaw receiver
@@ -107,6 +117,8 @@ effect of handoff. Secrets and raw credentials do not belong in the brief.
    and B's card ID when present. Match the standalone line `HANDOFF_RELEASED <release-nonce>`
    from new receiver output, not an echo of the request. B verifies these, emits the
    release receipt and only then starts authorized task writes.
+   Release and pause instructions use the same mailbox call plus one short cue. Their
+   transport mail creates no new owned work; it never replaces B's actual work card.
    The receipt is proven by order, not by promise: A must see the standalone line before it
    sees any change in the checkout (repeat the Git and untracked-file observations from
    step 1 after the call returns). A change that appears first fails the handoff even if the
@@ -144,9 +156,20 @@ effect of handoff. Secrets and raw credentials do not belong in the brief.
 the checkout. It holds, between two marker lines, what git and the file system can state: the checkout,
 branch, HEAD and subject, the last five commits, and every uncommitted path with its SHA-256. Below the
 markers are five sections for the agent: Objective and authorization, Done, Next, Decisions and
-assumptions, Risks and open questions. The command never touches text outside the markers.
+assumptions, Risks and open questions, plus Known failure, Report destination and Reach card.
+The command never touches text outside the markers. Record settled decisions and exclusions,
+the exact unfinished action and expected result, the latest failed operation/target/error,
+the continuing report destination and any real card identity/recipient in these sections.
 
-Run it after every finished task and then update Done and Next. An agent that does this can be
+With no file argument and a known native session identity, the command uses
+`<Sno profile>/station/handoff/<session-id>.md`; the Sno profile defaults to `~/.sno`.
+SessionStart and next-prompt continuity injection read that same file. A new receiver keeps
+the complete readable brief and maintains it under its own session's default path too.
+The machine block preserves available runtime/session identity; absent optional metadata
+does not make a readable task unusable. Never choose a different "last session".
+
+Keep Next accurate before taking it; run the command at real task boundaries and before
+an orderly stop or compaction, then update Done and Next. An agent that does this can be
 replaced at any moment, including by a receiver that never meets it. Prerequisites: bash 4+, GNU
 coreutils and git; on macOS install `bash` and `coreutils` from Homebrew and put them first on PATH.
 
@@ -158,8 +181,17 @@ does not compare what is staged, and it checks the checkout the record names, no
 
 ## When the sender is gone
 
-The receiver B works from the progress record alone. Steps 3 to 7 above do not apply: there is no A to
-verify with, release, or unregister.
+Try the exact original vendor session first through `sno rotate-agent-resume`. An unavailable
+session rebuilds from the same readable record, applicable Reach card and scoped memory.
+Known exhausted quota skips original-vendor execution; unknown quota or authentication failure
+is not exhausted quota. If no other vendor can run, retain the brief and report the quota
+blocker and that other-vendor takeover was skipped; no recovery has completed yet.
+
+For a new conversation, the recovery initiator carries the actual owner authorization,
+uses its own identity for any receiver card and drives the same readiness/release path.
+Keep the original X-Work and card relationship and continuing Reply-To; never fabricate A's
+cancellation or release. Correlate B's actual card recipient with its new
+`HANDOFF_RELEASED <nonce>` output. The absent sender makes no further task writes.
 
 - Run `sno rotate-agent-resume` (see the `rotate-agent` skill) to start B on a tmux window, or, when B is
   already running, do the following by hand.
@@ -171,7 +203,11 @@ verify with, release, or unregister.
 - Continue in the same checkout. After every finished task run `sno handoff-checkpoint <record>` and update
   Done and Next, so B can be replaced the same way.
 - Report to the owner's session named in the record. If there is none, report in the session that
-  started B, and say that the receiver started without a release from the sender.
+  started B. State one outcome: `resumed` for the exact original conversation, `rebuilt` for a
+  new conversation with recovered task state, or `lost` for essential task facts that could
+  not be recovered. Separately report whether the unfinished action completed, remains
+  unfinished or is blocked, and identify any missing facts or original-conversation loss.
+  A process start, acknowledgement or release is not task completion.
 
 ## Failure and retry
 

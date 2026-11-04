@@ -42,7 +42,8 @@ test('recall prints the fixed heading, one index line per in-scope accepted less
   const r = recall(store, 'claude-code', { session_id: 'S1', cwd: checkout }, NOW, ARMED);
   assert.equal(r.code, 0);
   assert.equal(r.lines[0], "Lessons from this machine's own sessions", 'the fixed heading is first when armed');
-  assert.equal(r.lines[1], 'L-a · general · trigger L-a — advice L-a', 'one index line with the trigger and the advice');
+  assert.ok(r.lines[1].startsWith('L-a · general · trigger L-a — advice L-a\n'), 'the heading retains the trigger and advice');
+  assert.ok(r.lines[1].includes('situation: {"task_type":"w","trigger":"trigger L-a","tools":[]}'));
   assert.equal(r.lines[2], 'Read one in full with: sno rem-reflect lesson <lesson_id> --session S1 --agent claude-code --cwd ' + checkout);
   assert.equal(r.lines.length, 3, 'nothing else');
   // one shown line appended
@@ -64,7 +65,7 @@ test('the index prints at most 10 lines even with twelve in-scope accepted lesso
 test('a candidate, a tbd, and an under_review lesson never appear, and lesson detail refuses each naming status', () => {
   const checkout = fixtureCheckout();
   const config = fixtureConfig({ claude_root: tmp('c'), codex_root: tmp('x') });
-  const store = seed(config, [lesson('L-ok'), lesson('L-cand', { status: 'candidate' }), lesson('L-tbd', { status: 'tbd' }),
+  const store = seed(config, [lesson('L-ok'), lesson('L-cand', { status: 'candidate', listed: false }), lesson('L-tbd', { status: 'tbd' }),
     lesson('L-rev', { status: 'under_review' }), lesson('L-otherproj', { applies_to: 'project:github.com/other/repo' })]);
   const r = recall(store, 'claude-code', { session_id: 'S1', cwd: checkout }, NOW, ARMED);
   const index = idx(r.lines);
@@ -77,17 +78,18 @@ test('a candidate, a tbd, and an under_review lesson never appear, and lesson de
   }
 });
 
-test('lesson detail prints the four fields and appends one read line; --session S9 with no shown line still works', () => {
+test('lesson detail prints the available fields and appends one read line; --session S9 with no shown line still works', () => {
   const checkout = fixtureCheckout();
   const config = fixtureConfig({ claude_root: tmp('c'), codex_root: tmp('x') });
   const store = seed(config, [lesson('L-a')]);
   const d = lessonDetail(store, 'L-a', { session: 'S9', cwd: checkout, agent: 'claude-code' }, NOW);
   assert.equal(d.code, 0);
-  assert.equal(d.lines.length, 4, 'exactly the four fields');
+  assert.equal(d.lines.length, 5, 'the old fields and the skill reference, without invented outcomes');
   assert.match(d.lines[0], /^situation: .*"trigger":"trigger L-a"/, 'situation carries its content, not an empty field');
   assert.equal(d.lines[1], 'advice: advice L-a');
-  assert.equal(d.lines[2], 'because: because L-a');
-  assert.match(d.lines[3], /^evidence: .*"trace_id":"t\.v1"/, 'evidence carries its content');
+  assert.equal(d.lines[2], 'skill_target: null');
+  assert.equal(d.lines[3], 'because: because L-a');
+  assert.match(d.lines[4], /^evidence: .*"trace_id":"t\.v1"/, 'evidence carries its content');
   const usage = readFileSync(join(store, 'ledger/usage.jsonl'), 'utf8').trim().split('\n');
   assert.equal(usage.length, 1, 'exactly one read line is appended, not two');
   const read = JSON.parse(usage[0]);
@@ -128,7 +130,8 @@ test('recall shares project and general lessons across harnesses, hides agent sc
 test('an unwritable usage log still lets recall print the index and exit 0 with one stderr line', { skip: process.getuid?.() === 0 ? 'root ignores file mode' : false }, () => {
   const checkout = fixtureCheckout();
   const config = fixtureConfig({ claude_root: tmp('c'), codex_root: tmp('x') });
-  const store = seed(config, [lesson('L-a')]);
+  const store = seed(config, [lesson('L-a', { expected_result: 'The report is readable.',
+    success_criteria: 'The account read contains the report.' })]);
   // make the usage file read-only so the append fails
   mkdirSync(join(store, 'ledger'), { recursive: true });
   writeFileSync(join(store, 'ledger/usage.jsonl'), '');
@@ -136,8 +139,14 @@ test('an unwritable usage log still lets recall print the index and exit 0 with 
   const r = recall(store, 'claude-code', { session_id: 'S1', cwd: checkout }, NOW, ARMED);
   assert.equal(r.code, 0, 'recall still exits 0');
   assert.match(r.lines[0], /Lessons from this machine/);
+  assert.ok(r.lines.join('\n').includes('success_criteria: The account read contains the report.'));
   assert.equal(r.stderr?.length, 1, 'one stderr line names the append failure');
   assert.match(r.stderr!.join('\n'), /could not record use/);
+  assert.match(r.stderr!.join('\n'), /session S1, lessons L-a; context delivered without use measurement/);
+  const detail = lessonDetail(store, 'L-a', { session: 'S1', cwd: checkout, agent: 'claude-code' }, NOW);
+  assert.equal(detail.code, 0);
+  assert.ok(detail.lines.join('\n').includes('success_criteria: The account read contains the report.'));
+  assert.match(detail.stderr?.join('\n') ?? '', /session S1, lesson L-a; context delivered without read measurement/);
   chmodSync(join(store, 'ledger/usage.jsonl'), 0o600);
 });
 
@@ -147,7 +156,7 @@ test('a 300-character trigger and its advice reach the session-start list uncut'
   const store = seed(config, [lesson('L-long', { situation: { task_type: 'w', trigger: 'z'.repeat(300), tools: [] },
     advice: 'Check the key field is unique before a production batch.' })]);
   const r = recall(store, 'claude-code', { session_id: 'S1', cwd: checkout }, NOW, ARMED);
-  assert.equal(r.lines[1], `L-long · general · ${'z'.repeat(300)} — Check the key field is unique before a production batch.`);
+  assert.ok(r.lines[1].startsWith(`L-long · general · ${'z'.repeat(300)} — Check the key field is unique before a production batch.\n`));
 });
 
 test('verified listed lessons are recalled without the owner, in their layer, and the full-lesson command agrees', () => {
@@ -160,8 +169,8 @@ test('verified listed lessons are recalled without the owner, in their layer, an
     lesson('L-verified-here', { ...verified, applies_to: `project:${here}`, project_id: here }),
     lesson('L-verified-user-wide', { ...verified, applies_to: 'general', project_id: 'github.com/other/repo' }),
     lesson('L-verified-skill-here', { ...verified, applies_to: 'skill:/skills/heartbeat', project_id: here }),
-    lesson('L-unverified', { status: 'candidate', listed: true }),
-    lesson('L-verification-refused', { status: 'candidate', listed: true, verification: { accepted: false } }),
+    lesson('L-unverified', { status: 'candidate', listed: false }),
+    lesson('L-verification-refused', { status: 'candidate', listed: false, verification: { accepted: false } }),
     lesson('L-rejected', { status: 'rejected', verification: { accepted: true } }),
     lesson('L-verified-other-project', { ...verified, applies_to: 'project:github.com/other/repo', project_id: 'github.com/other/repo' }),
     lesson('L-verified-skill-other', { ...verified, applies_to: 'skill:/skills/heartbeat', project_id: 'github.com/other/repo' }),
@@ -330,14 +339,14 @@ console.log(JSON.stringify({ lesson_ids: ['L-a'] }));
 
   // A 429 without reset_at keeps the old failure row and pauses nothing.
   process.env.RECALL_429 = 'no-reset';
-  assert.deepEqual(call('s0', '2026-09-08T00:00:00Z'), { code: 0, lines: [] });
+  assert.deepEqual(call('s0', '2026-09-08T00:00:00Z'), { code: 0, lines: [], stderr: [] });
   assert.equal(sent(), 1);
   assert.equal(usage().filter(row => row.type === 'first-message-recall-skipped').length, 0);
   assert.match(JSON.stringify(usage().find(row => row.type === 'first-message-recall-failed')), /allowance_used_up/);
 
   // The first 429 with reset_at is sent, refused, and recorded with the reset.
   process.env.RECALL_429 = 'reset';
-  assert.deepEqual(call('s1', '2026-09-08T00:10:00Z'), { code: 0, lines: [] });
+  assert.deepEqual(call('s1', '2026-09-08T00:10:00Z'), { code: 0, lines: [], stderr: [] });
   assert.equal(sent(), 2);
   const first = usage().filter(row => row.session_id === 's1');
   assert.deepEqual(first.map(row => row.type), ['first-message-recall', 'first-message-recall-skipped']);
@@ -345,11 +354,11 @@ console.log(JSON.stringify({ lesson_ids: ['L-a'] }));
 
   // Before the reset the next session never spawns the CLI and records the same pause.
   delete process.env.RECALL_429;
-  assert.deepEqual(call('s2', '2026-09-08T12:00:00Z'), { code: 0, lines: [] });
+  assert.deepEqual(call('s2', '2026-09-08T12:00:00Z'), { code: 0, lines: [], stderr: [] });
   assert.equal(sent(), 2, 'no request left the machine');
   assert.deepEqual(usage().filter(row => row.session_id === 's2').map(row => [row.type, row.until]),
     [['first-message-recall-skipped', '2026-09-09T01:00:00Z']]);
-  assert.deepEqual(call('s2', '2026-09-08T12:01:00Z'), { code: 0, lines: [] });
+  assert.deepEqual(call('s2', '2026-09-08T12:01:00Z'), { code: 0, lines: [], stderr: [] });
   assert.equal(usage().filter(row => row.session_id === 's2').length, 1, 'a later prompt in a paused session is not a first prompt again');
 
   // After the reset the call goes out again and the answer is shown.
@@ -367,10 +376,89 @@ test('a lesson bound to a failed call names what it fires on in its index line',
     lesson('L-edit', { trigger_match: { tool: 'Edit', command_id: null, error_signature: 'String to replace not found', path_glob: '*.ts' } }),
     lesson('L-plain', { trigger_match: null }),
   ]);
-  const index = idx(recall(store, 'claude-code', { session_id: 'S1', cwd: checkout }, NOW, ARMED).lines).sort();
+  const index = idx(recall(store, 'claude-code', { session_id: 'S1', cwd: checkout }, NOW, ARMED).lines).map(line => line.split('\n')[0]).sort();
   assert.deepEqual(index, [
     'L-edit · general · trigger L-edit [on: *.ts] — advice L-edit',
     'L-on · general · trigger L-on [on: bun test] — advice L-on',
     'L-plain · general · trigger L-plain — advice L-plain',
   ]);
+});
+
+test('experience graph: emits complete lesson context', t => {
+  const checkout = fixtureCheckout();
+  const config = fixtureConfig({ claude_root: tmp('c'), codex_root: tmp('x') });
+  const complete = lesson('L-complete', { expected_result: 'The account contains the report that was written.',
+    success_criteria: 'Read the account and observe the report title and body.', memory_fact_ids: ['fact-report-format'],
+    skill_target: 'skills/report-writer', situation: { task_type: 'report', trigger: 'writing the report', tools: ['account_read'] } });
+  const store = seed(config, [complete, lesson('L-old'), lesson('L-pending', { ...complete, lesson_id: 'L-pending', status: 'candidate' })]);
+  const fields = ['"task_type":"report"', '"tools":["account_read"]', 'advice L-complete',
+    String(complete.expected_result), String(complete.success_criteria), 'fact-report-format', 'skills/report-writer'];
+  const start = recall(store, 'claude-code', { session_id: 'experience-start', cwd: checkout }, NOW, ARMED);
+  assert.equal(start.code, 0);
+  const detail = lessonDetail(store, 'L-complete', { session: 'experience-start', cwd: checkout, agent: 'claude-code' }, NOW);
+  assert.equal(detail.code, 0);
+  for (const value of fields) {
+    assert.ok(start.lines.join('\n').includes(value), `session-start contains ${value}`);
+    assert.ok(detail.lines.join('\n').includes(value), `detail contains ${value}`);
+  }
+  const pending = lessonDetail(store, 'L-pending', { cwd: checkout, agent: 'claude-code' }, NOW);
+  assert.equal(pending.code, 0, 'the owner can inspect a listed candidate before deciding');
+  assert.ok(pending.lines.join('\n').includes(String(complete.success_criteria)));
+
+  const bin = tmp('experience-recall-bin');
+  writeFileSync(join(bin, 'sno'), `#!/usr/bin/env node
+const args = process.argv.slice(2).join(' ');
+if (args === 'station consent --json') console.log('{"consent":"full"}');
+else if (args === 'rem recall --json') console.log('{"lesson_ids":["L-complete"]}');
+else process.exit(2);
+`, { mode: 0o755 });
+  const beforePath = process.env.PATH;
+  process.env.PATH = `${bin}:${beforePath ?? ''}`;
+  t.after(() => { if (beforePath === undefined) delete process.env.PATH; else process.env.PATH = beforePath; });
+  const prompt = firstMessageRecall(store, 'claude-code', { session_id: 'experience-prompt', cwd: checkout, prompt: 'write the report' }, NOW);
+  assert.equal(prompt.code, 0);
+  const context = JSON.parse(prompt.lines[0]).hookSpecificOutput.additionalContext as string;
+  for (const value of fields) assert.ok(context.includes(value), `prompt contains ${value}`);
+  assert.ok(!context.includes('L-old'), 'the selected prompt does not add an unrelated lesson');
+  const usage = readFileSync(join(store, 'ledger/usage.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+  assert.ok(usage.some(row => row.type === 'shown' && row.session_id === 'experience-prompt' && row.lesson_ids.includes('L-complete')));
+  assert.ok(usage.some(row => row.type === 'read' && row.session_id === 'experience-start' && row.lesson_id === 'L-complete'));
+});
+
+test('experience graph: prompt context survives a failed shown append', t => {
+  const checkout = fixtureCheckout();
+  const config = fixtureConfig({ claude_root: tmp('c'), codex_root: tmp('x') });
+  const complete = lesson('L-prompt-failure', { expected_result: 'The saved report matches the requested content.',
+    success_criteria: 'Read back the report title and body.', memory_fact_ids: ['fact-report-format'],
+    skill_target: 'skills/report-writer' });
+  const store = seed(config, [complete]);
+  const bin = tmp('experience-shown-failure');
+  const entry = join(bin, 'entry.jsonl');
+  const usage = join(store, 'ledger/usage.jsonl');
+  writeFileSync(join(bin, 'sno'), `#!/usr/bin/env node
+const fs = require('node:fs');
+const args = process.argv.slice(2).join(' ');
+if (args === 'station consent --json') console.log('{"consent":"full"}');
+else if (args === 'rem recall --json') {
+  fs.copyFileSync(${JSON.stringify(usage)}, ${JSON.stringify(entry)});
+  fs.unlinkSync(${JSON.stringify(usage)});
+  fs.mkdirSync(${JSON.stringify(usage)});
+  console.log('{"lesson_ids":["L-prompt-failure"]}');
+} else process.exit(2);
+`, { mode: 0o755 });
+  const beforePath = process.env.PATH;
+  process.env.PATH = `${bin}:${beforePath ?? ''}`;
+  t.after(() => { if (beforePath === undefined) delete process.env.PATH; else process.env.PATH = beforePath; });
+  const result = firstMessageRecall(store, 'claude-code', {
+    session_id: 'experience-prompt-failure', cwd: checkout, prompt: 'write the report',
+  }, NOW);
+  const handled = JSON.parse(readFileSync(entry, 'utf8').trim());
+  assert.equal(handled.type, 'first-message-recall', 'the ordinary first-message append succeeded before selection');
+  assert.equal(handled.session_id, 'experience-prompt-failure');
+  assert.equal(result.code, 0);
+  const context = JSON.parse(result.lines[0]).hookSpecificOutput.additionalContext as string;
+  for (const value of [JSON.stringify(complete.situation), String(complete.advice), String(complete.expected_result),
+    String(complete.success_criteria), 'fact-report-format', 'skills/report-writer']) assert.ok(context.includes(value));
+  assert.match(result.stderr?.join('\n') ?? '', /EISDIR/);
+  assert.match(result.stderr?.join('\n') ?? '', /session experience-prompt-failure, lessons L-prompt-failure; context delivered without use measurement/);
 });

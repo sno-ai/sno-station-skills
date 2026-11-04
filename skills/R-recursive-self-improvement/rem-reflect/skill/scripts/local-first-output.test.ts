@@ -62,6 +62,8 @@ function lessonFor(prompt: string, quote: string = CORRECTION): unknown {
     summary: 'The report was declared done without reading the account back', class: 'EXECUTION_LAPSE',
     situation: { task_type: 'write a report', trigger: 'a report was written to an account and declared done', tools: [] },
     advice: 'Read the account back after writing a report before saying it is done.',
+    expected_result: 'The account contains the report that was written.',
+    success_criteria: 'The account read result contains the report title and body.', memory_fact_ids: [],
     because: 'The owner had to ask for the read-back after the agent reported success.', polarity: 'from_failure',
     evidence: [{ line_start: line, line_end: line, quote }], skill_target: header.skills_loaded[0] ?? null,
     reminder_line: 'Read the account back after writing, before reporting the work done.', verdict_line: verdictLine,
@@ -74,7 +76,7 @@ function staged(store: string, name: string): string[] {
   return readdirSync(join(store, 'staging'), { recursive: true }).map(String).filter(path => path.endsWith(name));
 }
 
-test('a Local First night writes a lesson and a skill reminder the owner can read, accept and reject, and uploads nothing', t => {
+test('experience graph: local-first outcomes survive drafting and approval', t => {
   localFirst(t);
   const config = fixtureConfig({ claude_root: tmp('c'), codex_root: tmp('x') });
   const store = makeStore(config);
@@ -92,6 +94,9 @@ test('a Local First night writes a lesson and a skill reminder the owner can rea
   assert.equal(readLessons(store).length, 1);
   assert.deepEqual([lesson.status, lesson.listed, lesson.advice], ['candidate', true, 'Read the account back after writing a report before saying it is done.']);
   assert.equal(lesson.verification, undefined, 'a local lesson carries no cloud verification');
+  assert.equal(lesson.expected_result, 'The account contains the report that was written.');
+  assert.equal(lesson.success_criteria, 'The account read result contains the report title and body.');
+  assert.deepEqual(lesson.memory_fact_ids, [], 'no memory fact was cited by the source');
   assert.deepEqual(lesson.verdict_ref, { line: lesson.evidence[0].line_start - 1, kind: 'test', passed: false }, 'the local lesson cites the failed test the session ran');
   assert.deepEqual(readPages(store).map(page => page.page_id), [lesson.page_id]);
   const proposal = readLedger(store).find(row => row.type === 'proposal');
@@ -107,6 +112,8 @@ test('a Local First night writes a lesson and a skill reminder the owner can rea
   assert.match(report, new RegExp(`${lesson.lesson_id}: Read the account back`));
   assert.match(report, new RegExp(`sno rem-reflect accept ${lesson.lesson_id}`));
   assert.match(report, /Pending decisions: 2/);
+  assert.ok(report.includes(`expected_result: ${lesson.expected_result}`));
+  assert.ok(report.includes(`success_criteria: ${lesson.success_criteria}`));
   assert.match(report, /20260908-0000\/codex: .*heartbeat/);
 
   // The ordinary commands decide them. Accepting the proposal changes the installed skill.
@@ -125,6 +132,7 @@ test('a Local First night writes a lesson and a skill reminder the owner can rea
   const acceptLesson = cliRun(store, 'accept', lesson.lesson_id);
   assert.equal(acceptLesson.status, 0, acceptLesson.stdout + acceptLesson.stderr);
   assert.equal(readLessons(store)[0].status, 'accepted');
+  assert.equal(readLessons(store)[0].success_criteria, lesson.success_criteria);
   assert.match(recall().stdout, new RegExp(`^${lesson.lesson_id} · `, 'm'));
   // And the other verdict works on a second lesson from another night.
   const second = new WriterCli(prompt => lessonFor(prompt, 'write the weekly report'));
@@ -136,6 +144,50 @@ test('a Local First night writes a lesson and a skill reminder the owner can rea
   const reject = cliRun(store, 'reject', fresh.lesson_id);
   assert.equal(reject.status, 0, reject.stdout + reject.stderr);
   assert.equal(readLessons(store).find(row => row.lesson_id === fresh.lesson_id)?.status, 'rejected');
+});
+
+test('experience graph: local-first keeps only fact identifiers supplied in evidence', t => {
+  localFirst(t);
+  const config = fixtureConfig({ claude_root: tmp('c'), codex_root: tmp('x') });
+  const store = makeStore(config);
+  writeCodexSession(config.codex_root, 'facts', [
+    codexMeta('facts', '/n'), codexUser('write the weekly report'),
+    codexAssistant('Memory search returned {"factId":"fact-report-format","text":"Use title and body."}'),
+    codexAssistant('Report written, done.'), codexFailedTest(), codexUser(`No, ${CORRECTION}`),
+  ], MT);
+  const writer = new WriterCli(prompt => {
+    const answer = lessonFor(prompt) as { lesson: { memory_fact_ids: string[] } };
+    answer.lesson.memory_fact_ids = ['fact-report-format', 'fact-invented'];
+    return answer;
+  });
+  const result = run(store, NIGHT, 'u', writer);
+  assert.equal(result.code, 0, result.lines.join('\n'));
+  assert.equal(readLessons(store).length, 1, 'an absent optional reference does not discard the lesson');
+  assert.deepEqual(readLessons(store)[0].memory_fact_ids, ['fact-report-format']);
+  assert.match(readFileSync(join(store, 'staging', '20260908-0000', 'run.log'), 'utf8'),
+    /facts\.v1: local writer omitted memory fact references fact-invented: absent from supplied evidence; lesson kept/);
+});
+
+test('experience graph: local-first omits a draft without success criteria and logs the refusal', t => {
+  localFirst(t);
+  for (const [field, value] of [['success_criteria', undefined], ['success_criteria', ' \t\n '], ['expected_result', ' \t\n ']] as const) {
+    const config = fixtureConfig({ claude_root: tmp('c'), codex_root: tmp('x') });
+    const store = makeStore(config);
+    correctedSession(config);
+    const writer = new WriterCli(prompt => {
+      const answer = lessonFor(prompt) as { lesson: Record<string, unknown> };
+      if (value === undefined) delete answer.lesson[field];
+      else answer.lesson[field] = value;
+      return answer;
+    });
+    const result = run(store, NIGHT, 'u', writer);
+    assert.equal(result.code, 0, result.lines.join('\n'));
+    assert.equal(writer.asked.length, 1);
+    assert.deepEqual(readLessons(store), [], `${field} without observable content cannot produce a lesson`);
+    assert.deepEqual(readPages(store), []);
+    assert.match(readFileSync(join(store, 'staging', '20260908-0000', 'run.log'), 'utf8'),
+      /cx\.v1: local writer answer refused: Error: .*oneOf/);
+  }
 });
 
 test('a session already written about is not asked again, so a second night adds no duplicate', t => {
@@ -214,6 +266,8 @@ process.stdout.write(JSON.stringify({ lesson: {
   summary: 'The report was declared done without reading the account back', class: 'EXECUTION_LAPSE',
   situation: { task_type: 'write a report', trigger: 'a report was written to an account and declared done', tools: [] },
   advice: 'Read the account back after writing a report before saying it is done.',
+  expected_result: 'The account contains the report that was written.',
+  success_criteria: 'The account read result contains the report title and body.', memory_fact_ids: [],
   because: 'The owner had to ask for the read-back after the agent reported success.', polarity: 'from_failure',
   evidence: [{ line_start: line, line_end: line, quote }], skill_target: header.skills_loaded[0] ?? null,
   reminder_line: 'Read the account back after writing, before reporting the work done.', verdict_line: verdictLine } }));
@@ -259,7 +313,7 @@ test('a public build without a private prompt gets the binary-served instruction
       const quote = 'No, check it first';
       const line = Number(new RegExp('^(\\\\d+): .*' + quote, 'm').exec(input)[1]);
       const verdictLine = Number(/^(\\d+) test failed /m.exec(input)[1]);
-      return {stdout: JSON.stringify({lesson:{summary:'Check the written report', class:'EXECUTION_LAPSE', situation:{task_type:'report',trigger:'a completed report',tools:[]}, advice:'Check the report before declaring it done.', because:'The owner asked for verification.', polarity:'from_failure', evidence:[{line_start:line,line_end:line,quote}],skill_target:null,reminder_line:null,verdict_line:verdictLine}})};
+      return {stdout: JSON.stringify({lesson:{summary:'Check the written report', class:'EXECUTION_LAPSE', situation:{task_type:'report',trigger:'a completed report',tools:[]}, advice:'Check the report before declaring it done.', expected_result:'The saved report matches the requested report.', success_criteria:'Read the saved report and compare its title and body with the request.', memory_fact_ids:[], because:'The owner asked for verification.', polarity:'from_failure', evidence:[{line_start:line,line_end:line,quote}],skill_target:null,reminder_line:null,verdict_line:verdictLine}})};
     } });
     console.log(JSON.stringify({ code: result.code, asked, lessons: existsSync(join(store, 'wiki/lessons.jsonl')),
       log: readFileSync(join(store, 'staging', '20260908-0000', 'run.log'), 'utf8'),

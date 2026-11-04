@@ -279,6 +279,7 @@ test('Local First writes lessons and accepted reminders to the new agents skill 
     const target = join(cli === 'hermes' ? config.hermes_home : config.openclaw_home, 'skills/heartbeat');
     return { stdout: JSON.stringify({ lesson: { summary: 'Verify before completion', class: 'EXECUTION_LAPSE',
       situation: { task_type: 'report', trigger: 'report completion', tools: [] }, advice: 'Verify the report.',
+      expected_result: 'The report is verified before completion.', success_criteria: 'The report read-back matches the request.', memory_fact_ids: [],
       because: 'The owner requested verification.', polarity: 'from_failure', evidence: [{ line_start: line, line_end: line, quote: 'No, verify it first.' }],
       skill_target: target, reminder_line: 'Verify the report before declaring completion.', verdict_line: verdictLine } }) };
   } });
