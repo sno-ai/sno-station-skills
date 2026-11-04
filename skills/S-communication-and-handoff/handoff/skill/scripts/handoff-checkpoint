@@ -112,7 +112,7 @@ cmd_write() {  # <file> <repo>
         chmod 644 -- "$TMP"
         {
             # shellcheck disable=SC2016  # the backticks are literal text in the record
-            printf '# Progress record\n\nBefore taking the next action, keep Next and its expected result accurate. Update Done and Next at task boundaries, before an orderly stop and before compaction. Record the latest failed operation, target and error. The block below is rewritten by the command; everything else is yours.\n\n'
+            printf '# Progress record\n\nStart the task you were given first: do not read or edit this record before your first action on it. Update it only when there is real progress to record (a finished step, a decision, a failure, an orderly stop or compaction), and only with your file edit tool, never through a shell command. Keep Next and its expected result accurate and record the latest failed operation, target and error. The block below is rewritten by the command; everything else is yours.\n\n'
             cat -- "$BLOCK"
             printf '\n## Objective and authorization\n\n## Done\n\n## Next\n\n## Decisions and assumptions\n\n## Known failure\n\n## Report destination\n\n## Reach card\n\n## Risks and open questions\n'
         } >"$TMP"
