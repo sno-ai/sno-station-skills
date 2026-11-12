@@ -1,0 +1,14 @@
+{
+  "unit": "tag-team",
+  "category": "S",
+  "tier": "candidate",
+  "split": {},
+  "source": {
+    "commit": "9e401666de378b7d9bebe832f0336252722d59da",
+    "unit_tree_clean": true
+  },
+  "selftests_run": 1,
+  "contract_sha256": "5022662b4807e817533b5edc1700fb40e87deccaf47d25f82d941baeacf18b62",
+  "payload_sha256": "ef1e56119ee9e24ab9e5b50078d913067571f46ac854f4d92353a72666fc5c96",
+  "published_at": "2026-11-12T22:14:00Z"
+}

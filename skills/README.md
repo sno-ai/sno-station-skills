@@ -80,6 +80,7 @@ People talk through a shared inbox, and when one is out the other takes over wit
 - [reach](S-communication-and-handoff/reach/) — agent-to-agent cards, rings and calls
 - [rotate-agent](S-communication-and-handoff/rotate-agent/) — fail over to another vendor's agent when quota runs out, or start a replacement from a progress record (ships the `sno rotate-agent-resume` command)
 - [subscription-quota-check](S-communication-and-handoff/subscription-quota-check/) — read remaining subscription quota without spending it
+- [tag-team](S-communication-and-handoff/tag-team/) — two agents on one task: one builds, the other reviews, and the findings are settled between them
 
 ## H · Reporting & Visibility
 

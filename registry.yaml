@@ -32,6 +32,7 @@ units:
   reach:                       {cat: S, tier: shipped}
   rotate-agent:                {cat: S, tier: shipped}
   subscription-quota-check:    {cat: S, tier: shipped}
+  tag-team:                    {cat: S, tier: candidate}
   rem-reflect:                 {cat: R, tier: shipped}
   pl:                          {cat: T, tier: shipped, split: {pl-analyze: R}}
   cos:                         {cat: T, tier: shipped, split: {cos-evolve: R}}

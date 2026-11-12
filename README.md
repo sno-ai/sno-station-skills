@@ -3,7 +3,7 @@
 ![Sno Station — Agents, assemble. Two heads are better than one, and smarter by morning.](https://raw.githubusercontent.com/sno-ai/sno-station/main/docs/images/hero-banner.png)
 
 [![license Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-97ca00.svg?labelColor=3b3b3b)](LICENSE)
-![37 skills in 28 units](https://img.shields.io/badge/skills-37%20in%2028%20units-2dd4bf.svg?labelColor=3b3b3b)
+![38 skills in 29 units](https://img.shields.io/badge/skills-38%20in%2029%20units-2dd4bf.svg?labelColor=3b3b3b)
 ![self-tested before every release](https://img.shields.io/badge/every%20release-self--tested-3b82f6.svg?labelColor=3b3b3b)
 ![agents Claude Code, Codex](https://img.shields.io/badge/agents-Claude%20Code%20%C2%B7%20Codex-f0a04b.svg?labelColor=3b3b3b)
 
@@ -19,7 +19,7 @@ Copy this prompt into your agent's chat:
 Install sno.ai from GitHub.
 ```
 
-This installs Sno Station and sets up all 37 skills, plus the programs they call,
+This installs Sno Station and sets up all 38 skills, plus the programs they call,
 for the supported agents it finds on your machine.
 
 Or paste this command into your terminal:
@@ -53,6 +53,15 @@ Install only the less-is-more skill from https://github.com/sno-ai/sno-station-s
 for this project, including its scripts and references.
 ```
 
+**`tag-team`** puts two agents on one task: one builds, the other reviews, and they settle the
+findings between themselves. It needs Sno Station's Reach program. The prompt checks for it first.
+
+```text
+Install only the tag-team skill from https://github.com/sno-ai/sno-station-skills
+for this project. Check that `sno reach pair --help` works and tell me what is missing
+before installing anything else.
+```
+
 Supported agents for Sno Station: Claude Code, Codex, OpenClaw and Hermes Agent. Each skill declares
 what it needs from the agent. Setup uses that declaration to install it fully, install it in a reduced
 form, or skip it when the agent cannot run it.
@@ -76,7 +85,7 @@ codex plugin marketplace add sno-ai/sno-station-skills
 codex plugin add sno-station@sno-ai
 ```
 
-`sno-station` holds all 37 skills; most of them call Sno Station programs, so install Sno Station too.
+`sno-station` holds all 38 skills; most of them call Sno Station programs, so install Sno Station too.
 For only the 7 skills that run without Sno Station, install `sno-station-standalone@sno-ai` instead.
 
 [Install](#install) · [What changes for you](#what-changes-for-you) · [Why these skills](#why-these-skills) · [The pain, and what fixes it](#the-pain-and-what-fixes-it) · [Stories from our own machine](#i-went-to-bed-it-changed-shifts) · [The skills](#the-skills) · [Built to be trusted](#built-to-be-trusted) · [For skill authors](#for-skill-authors) · [License](#license)
@@ -197,7 +206,7 @@ in all three had dropped to zero.
 
 ## The skills
 
-37 skills, shipped as 28 units, filed under six things a team has to be able to do. A unit is
+38 skills, shipped as 29 units, filed under six things a team has to be able to do. A unit is
 one skill or a small family that installs together. The full index with links is
 [skills/README.md](skills/README.md).
 
@@ -433,6 +442,20 @@ logged in and tmux.
 - **Clear refusals:** when it cannot work, it says exactly why.
 
 *Use it when:* you opened an agent by hand and want others to reach it.
+
+#### [tag-team](skills/S-communication-and-handoff/tag-team/) — two agents on one task, one builds and one reviews
+
+- **One command:** `sno reach pair "the task"` starts both agents in the current folder, each
+  in a tmux window you can open and watch.
+- **Argued over before it reaches you.** The reviewer reads the result and the changed files
+  and answers with concrete defects or an explicit no-defect result; the two keep exchanging
+  fixes and reviews between themselves, and your agent asks the reviewer before calling it clean.
+- **Says what kind of review you got.** Signed in to two vendors, the review comes from the
+  other one. Signed in to one, the pair still runs and tells you the review stayed inside it.
+- **Does not call it clean too early.** A first review with findings is reported as open; no
+  third reviewer, and no second pair because the first review had not arrived yet.
+
+*Use it when:* a task is worth a second opinion and you do not want to carry it between agents.
 
 ### H · Reporting & Visibility
 

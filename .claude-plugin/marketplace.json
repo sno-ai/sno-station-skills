@@ -39,6 +39,7 @@
         "./skills/S-communication-and-handoff/reach/skill",
         "./skills/S-communication-and-handoff/rotate-agent/skill",
         "./skills/S-communication-and-handoff/subscription-quota-check/skill",
+        "./skills/S-communication-and-handoff/tag-team/skill",
         "./skills/T-delegation-and-work-orders/charter/skill",
         "./skills/T-delegation-and-work-orders/cos/skills/cos",
         "./skills/T-delegation-and-work-orders/cos/skills/cos-evolve",
