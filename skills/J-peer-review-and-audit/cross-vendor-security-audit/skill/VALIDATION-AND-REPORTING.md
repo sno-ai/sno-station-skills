@@ -195,7 +195,13 @@ Return exactly one JSON object and nothing else:
    - Codex: `env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy codex exec --skip-git-repo-check --ephemeral --ignore-user-config --disable apps --sandbox read-only -C <skill-dir> -c model_reasoning_effort=high -o <output-dir>/agents/second-look/answer.json - < <output-dir>/agents/second-look/prompt.md`
    - Claude Code, started from `<skill-dir>`: `claude -p --strict-mcp-config --tools Read Grep Glob --add-dir <target> --add-dir <output-dir> < <output-dir>/agents/second-look/prompt.md > <output-dir>/agents/second-look/answer.json`
 
-5. **Act on the answer.** The parent copies the answer unchanged to `<output-dir>/second-look.json`. Treat a malformed or prose-wrapped answer as in Phase 3: discard it and re-run once when the budget permits; otherwise `REPORT.md` says the second look failed and why.
+5. **Act on the answer.** The parent copies the answer unchanged to `<output-dir>/second-look.json` and checks it against the pile:
+
+```bash
+node <skill-dir>/validate-second-look.cjs <output-dir>/agents/second-look/input.json <output-dir>/second-look.json
+```
+
+   An answer the check rejects (malformed, prose-wrapped, or missing any set-aside item, because a skipped item was never re-read) is treated as in Phase 3: discard it and re-run once when the budget permits; otherwise `REPORT.md` says the second look failed and why.
    - `not_a_finding` changes nothing.
    - An item marked `needs_validation` or `confirmed`, and every `new_candidates` entry, is a revived candidate. Treat it the way Phase 5 treats a separate root cause found by a final verifier: reuse the fingerprint of the rejected record it revives, or assign a new source-derived fingerprint, and send it through Phase 3 candidate validation with a fresh verifier that did not hunt, validate it before, or run the second look. A record that survives goes through Phase 5 like any other. The candidate budget rules apply.
    - When that validation rejects a revived item, keep the `rejected` record and keep the disagreement: retain both reasons in ledger bookkeeping on the unit and list the item under "Reviewers disagree" in `REPORT.md`. Never drop it silently; the owner decides.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Two checks on this payload: the upstream validators' own tests, and the text contract of the
-# second-look step this skill adds, including a negative control.
+# Three checks on this payload: the upstream validators' own tests, the second-look answer check on a
+# complete and a skipped answer, and the text contract of the second-look step, including a negative control.
 set -Eeuo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 
@@ -11,6 +11,17 @@ trap 'rm -rf -- "$temp_dir"' EXIT
 
 command -v node >/dev/null || { printf 'selftest: node is required for the validator tests\n' >&2; exit 1; }
 (cd -- "$skill_dir" && node --test validate-findings.test.cjs validate-coverage-ledger.test.cjs)
+
+printf '[{"item_id":"hardening:a"},{"item_id":"rejected:b"}]' >"$temp_dir/input.json"
+printf '{"items":[{"item_id":"hardening:a","verdict":"needs_validation","evidence":"x.js:1"},{"item_id":"rejected:b","verdict":"not_a_finding","evidence":"y.js:2"}],"new_candidates":[]}' >"$temp_dir/complete.json"
+printf '{"items":[{"item_id":"hardening:a","verdict":"needs_validation","evidence":"x.js:1"}],"new_candidates":[]}' >"$temp_dir/skipped.json"
+node "$skill_dir/validate-second-look.cjs" "$temp_dir/input.json" "$temp_dir/complete.json"
+if skipped_output="$(node "$skill_dir/validate-second-look.cjs" "$temp_dir/input.json" "$temp_dir/skipped.json" 2>&1)" \
+  || [[ "$skipped_output" != *"1 of 2 set-aside items have no answer: rejected:b"* ]]; then
+  printf 'failed second-look check: a skipped item was not caught: %s\n' "$skipped_output" >&2
+  exit 1
+fi
+printf 'second-look answer check passed: skipped item caught\n'
 
 python3 - "$skill_dir" "$temp_dir" <<'PY'
 import pathlib
@@ -30,6 +41,7 @@ validation_rules = {
     "reviewer checks the dismissal reason": "Do not accept the audit's reason as given; check it against the source.",
     "codex runs read-only without user config or proxy": "--ignore-user-config --disable apps --sandbox read-only",
     "claude runs with read tools only": "claude -p --strict-mcp-config --tools Read Grep Glob",
+    "answer is checked against the pile": "node <skill-dir>/validate-second-look.cjs <output-dir>/agents/second-look/input.json",
     "revived items get fresh validation": "send it through Phase 3 candidate validation with a fresh verifier that did not hunt, validate it before, or run the second look",
     "disagreement is never dropped": "Never drop it silently; the owner decides.",
     "report lists disagreements": 'Under the heading "Reviewers disagree"',
