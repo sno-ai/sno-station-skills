@@ -356,15 +356,24 @@ REVIEW_CAP_WINDOW_HOURS="${REVIEW_CAP_WINDOW_HOURS:-24}"
 require_uint REVIEW_CAP_WINDOW_HOURS "$REVIEW_CAP_WINDOW_HOURS" 1  # 0 = count all history
 CAP_WINDOW_CUTOFF=0
 CAP_WINDOW_ACTIVE=0
+# iso_epoch <YYYY-MM-DDTHH:MM:SS+HH:MM>: epoch seconds. GNU date reads it with -d;
+# BSD date (macOS) has no -d and reads it with -j -f once the offset loses its colon.
+iso_epoch() {
+    local t="$1"
+    date -d "$t" +%s 2>/dev/null && return 0
+    if [[ "$t" =~ ^(.*[+-][0-9]{2}):([0-9]{2})$ ]]; then t="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"; fi
+    date -j -f '%Y-%m-%dT%H:%M:%S%z' "$t" +%s 2>/dev/null
+}
 if (( REVIEW_CAP_WINDOW_HOURS > 0 )); then
-    # `date -d <iso8601>` is GNU-only. Without it the filter would drop every
-    # line and no cap would ever trip, so prove it works before relying on it
-    # and otherwise fall back to counting all history — fail closed, not open.
-    if date -d "2026-01-01T00:00:00+00:00" +%s >/dev/null 2>&1; then
+    # iso_epoch must read the ledger's timestamps. Without it the filter would
+    # drop every line and no cap would ever trip, so prove it gives the known
+    # answer before relying on it and otherwise fall back to counting all
+    # history — fail closed, not open.
+    if [[ "$(iso_epoch "2026-01-01T00:00:00+00:00")" == 1767225600 ]]; then
         CAP_WINDOW_ACTIVE=1
         CAP_WINDOW_CUTOFF=$(( $(date +%s) - REVIEW_CAP_WINDOW_HOURS * 3600 ))
     else
-        log "[run-adversarial-review] no GNU date -d; cap window disabled, counting all history"
+        log "[run-adversarial-review] date cannot read ISO 8601 times; cap window disabled, counting all history"
     fi
 fi
 
@@ -379,7 +388,7 @@ within_cap_window() {
         [[ "$line" == *'"ts":"'* ]] || continue
         ts="${line#*\"ts\":\"}"
         ts="${ts%%\"*}"
-        epoch="$(date -d "$ts" +%s 2>/dev/null)" || continue
+        epoch="$(iso_epoch "$ts")" || continue
         (( epoch >= CAP_WINDOW_CUTOFF )) && printf '%s\n' "$line"
     done
     return 0
@@ -451,7 +460,7 @@ archive_path() {
 
 record_start() {
     ledger_write "$(printf '{"ts":%s,"event":"start","run":%s,"scope":%s,"journey":%s,"kind":%s,"round":%d,"cap":%d,"files":%d,"targets":%s,"probe":%s,"model":%s,"effort":%s,"pid":%d}' \
-        "$(json_str "$(date -Is)")" "$(json_str "$RUN_ID")" "$(json_str "$SCOPE_ID")" "$(json_str "$REVIEW_JOURNEY")" \
+        "$(json_str "$(date -Iseconds)")" "$(json_str "$RUN_ID")" "$(json_str "$SCOPE_ID")" "$(json_str "$REVIEW_JOURNEY")" \
         "$(json_str "$REVIEW_KIND")" "$ROUND_N" "$REVIEW_CAP" "$N" "$(json_arr "${FILES[@]}")" "$PROBE_PRESENT" \
         "$(json_str "$CODEX_MODEL")" "$(json_str "$CODEX_EFFORT")" "$$")"
 }
@@ -459,7 +468,7 @@ record_start() {
 record_refused() { # $1 = reason tag, $2 = human detail
     LEDGER_TERMINAL_WRITTEN=1
     ledger_write "$(printf '{"ts":%s,"event":"refused","run":%s,"scope":%s,"journey":%s,"kind":%s,"round":%d,"cap":%d,"files":%d,"targets":%s,"reason":%s,"detail":%s}' \
-        "$(json_str "$(date -Is)")" "$(json_str "$RUN_ID")" "$(json_str "$SCOPE_ID")" "$(json_str "$REVIEW_JOURNEY")" \
+        "$(json_str "$(date -Iseconds)")" "$(json_str "$RUN_ID")" "$(json_str "$SCOPE_ID")" "$(json_str "$REVIEW_JOURNEY")" \
         "$(json_str "$REVIEW_KIND")" "${ROUND_N:-0}" "$REVIEW_CAP" "$N" "$(json_arr "${FILES[@]}")" \
         "$(json_str "$1")" "$(json_str "$2")")"
 }
@@ -580,7 +589,7 @@ record_stats() { # $1=outcome $2=report-file(optional)
     # hard timeout and was killed), exit:<n> (codex itself failed), interrupted
     # (this wrapper was signalled). Empty on success.
     ledger_write "$(printf '{"ts":%s,"event":"end","run":%s,"scope":%s,"journey":%s,"kind":%s,"round":%d,"cap":%d,"files":%d,"targets":%s,"lines":%s,"probe":%s,"duration_s":%d,"waves":%s,"report":%s,"outcome":%s,"failure":%s,"verdict":%s,"fix_now":%s,"debt":%s,"out_of_context":%s,"high":%s,"medium":%s,"override":%s,"caller":%s,"reviewer":%s,"reviewer_vendor":%s}' \
-        "$(json_str "$(date -Is)")" "$(json_str "$RUN_ID")" "$(json_str "$SCOPE_ID")" "$(json_str "$REVIEW_JOURNEY")" \
+        "$(json_str "$(date -Iseconds)")" "$(json_str "$RUN_ID")" "$(json_str "$SCOPE_ID")" "$(json_str "$REVIEW_JOURNEY")" \
         "$(json_str "$REVIEW_KIND")" "$ROUND_N" "$REVIEW_CAP" "$N" "$(json_arr "${FILES[@]}")" \
         "${TOTAL_LINES:-0}" "$PROBE_PRESENT" "$dur" "${NUM_WAVES:-1}" "$(json_str "$report")" "$(json_str "$outcome")" \
         "$(json_str "${LAST_FAILURE_KIND:-}")" "$(json_str "${verdict:-unknown}")" \
@@ -760,7 +769,7 @@ record_start
 # a deferral nobody caused.
 if (( ${#DEFERRED_TEST_FILES[@]} > 0 )); then
     ledger_write "$(printf '{"ts":%s,"event":"deferred","run":%s,"scope":%s,"journey":%s,"kind":%s,"files":%d,"targets":%s,"reason":%s}' \
-        "$(json_str "$(date -Is)")" "$(json_str "$RUN_ID")" "$(json_str "$SCOPE_ID")" \
+        "$(json_str "$(date -Iseconds)")" "$(json_str "$RUN_ID")" "$(json_str "$SCOPE_ID")" \
         "$(json_str "$REVIEW_JOURNEY")" "$(json_str "test")" "${#DEFERRED_TEST_FILES[@]}" \
         "$(json_arr "${DEFERRED_TEST_FILES[@]}")" "$(json_str "moved out of a code review; needs one REVIEW_KIND=test pass")")"
 fi

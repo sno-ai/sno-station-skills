@@ -35,6 +35,8 @@ export OBSERVE_LOG="$TMP/observe.log"; : >"$OBSERVE_LOG"
 export PATH="$TMP/bin:$PATH"
 REPO="$TMP/repo"; git init -q "$REPO"
 git -C "$REPO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m first
+# In-place sed for GNU and BSD alike: <sed script> <file>
+sed_i() { sed "$1" "$2" >"$2.new" && mv -- "$2.new" "$2"; }
 check() { # name expected-prefix actual
   if [[ "$3" == "$2"* ]]; then printf 'PASS %s\n' "$1"; else printf 'FAIL %s: got %q\n' "$1" "$3"; fail=1; fi
 }
@@ -54,15 +56,15 @@ check "the crossing asks for the ordered handoff pick" '--pick handoff --from he
 printf '%s\n' 'switched 2026-10-09T00:00:00Z model=qwen-test vendor=local:local-reason' >"$TMP/watch.state"
 out=$(run)
 check "a switched record permits the second crossing" "ROTATE from=hermes" "$out"
-sed -i 's/short_only/wait/g;s/99.0/null/g' "$QUOTA_FIXTURES/sender.json"
+sed_i 's/short_only/wait/g;s/99.0/null/g' "$QUOTA_FIXTURES/sender.json"
 out=$(run)
 check "a direct jump to wait triggers the pick" "ROTATE from=hermes" "$out"
 [[ "$out" == *'verdict=wait'* ]] || fail=1
-sed -i 's/wait/owner_action/g' "$QUOTA_FIXTURES/sender.json"
+sed_i 's/wait/owner_action/g' "$QUOTA_FIXTURES/sender.json"
 check "owner action also triggers" "ROTATE from=hermes" "$(run)"
 printf '%s\n' '{"ok":true,"candidates":[],"chosen":null}' >"$QUOTA_FIXTURES/pick.json"
 check "no candidate keeps watching" "HOLD no-candidate" "$(run)"
-sed -i 's/owner_action/go/g;s/used_pct":null/used_pct":95/g' "$QUOTA_FIXTURES/sender.json"
+sed_i 's/owner_action/go/g;s/used_pct":null/used_pct":95/g' "$QUOTA_FIXTURES/sender.json"
 : >"$QUOTA_LOG"
 check "healthy sender holds" "HOLD from=hermes remaining=5%" "$(run)"
 check "healthy tick reads no other agent" "1" "$(wc -l <"$QUOTA_LOG" | tr -d ' ')"
@@ -88,7 +90,7 @@ check "Cursor retains the selected Codex receiver" 'codex' "$(sed 's/.*candidate
 printf '%s\n' '{"ok":true,"from":{"agent":"claude-code","vendor":"anthropic"},"candidates":[{"agent":"cursor","model":"gpt-test","provider":"openai-codex","vendor":"openai","in_place":false,"verdict":"go"}]}' >"$QUOTA_FIXTURES/pick.json"
 out=$(FROM_OVERRIDE=claude-code run)
 check "Claude can choose a Cursor receiver" 'cursor' "$(sed 's/.*candidates=//' <<<"$out" | jq -r '.[0].agent')"
-sed -i 's/used_pct":99/used_pct":98.5/' "$QUOTA_FIXTURES/sender.json"
+sed_i 's/used_pct":99/used_pct":98.5/' "$QUOTA_FIXTURES/sender.json"
 out=$(FROM_OVERRIDE=cursor run)
 check "Cursor fractional quota is compared by its whole part" 'ROTATE from=cursor seat=sender@host remaining=2%' "$out"
 # Preflight requires cursor-agent, rather than the IDE launcher.

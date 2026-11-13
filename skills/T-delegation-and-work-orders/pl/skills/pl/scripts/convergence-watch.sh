@@ -107,7 +107,7 @@ case "$cmd" in
     fi
     note="$(printf '%s' "$note" | tr '[:cntrl:]' ' ' | tr -d '\\"')"
     printf '{"ts":"%s","remaining":%d,"class":"%s","cycle":%s,"note":"%s"}\n' \
-      "$(date -Is)" "$remaining" "$class" "${cycle:-null}" "$note" >> "$file"
+      "$(date -Iseconds)" "$remaining" "$class" "${cycle:-null}" "$note" >> "$file"
     echo "recorded $journey remaining=$remaining class=$class${cycle:+ cycle=$cycle}"
     ;;
   verdict)

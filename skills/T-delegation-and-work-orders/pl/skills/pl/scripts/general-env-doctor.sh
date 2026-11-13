@@ -44,6 +44,9 @@ fixed() { say "[FIXED] $*"; }
 warn()  { say "[WARN] $*"; }
 fail()  { say "[FAIL] $*"; FAILS=$((FAILS+1)); }
 tcp()   { timeout 3 bash -c "exec 3<>/dev/tcp/$1/$2" 2>/dev/null; }
+# One ping with a 2-second wait. Linux ping -W takes seconds; macOS ping -W takes milliseconds,
+# and its seconds limit is -t (which is the TTL on Linux).
+ping1() { if [ "$(uname -s)" = Darwin ]; then ping -c1 -t2 "$1"; else ping -c1 -W2 "$1"; fi; }
 
 # ---------- secret lookup --------------------------------------------------
 
@@ -145,7 +148,7 @@ cmd_vm() {
       fail "vm: $name ($purpose) has no registered address — ask whoever owns the host, then fill $ROSTER_FILE; do NOT dispatch VM-dependent work until this probe passes"
       continue
     fi
-    if ping -c1 -W2 "$addr" >/dev/null 2>&1; then
+    if ping1 "$addr" >/dev/null 2>&1; then
       if timeout 5 ssh -o BatchMode=yes -o ConnectTimeout=3 "$addr" true 2>/dev/null; then
         pass "vm: $name ($addr) ping+ssh OK"
       else
@@ -175,7 +178,7 @@ cmd_host() { # registry lookup so PLs query the table instead of asking the owne
       tcp:*) local hp="${check#tcp:}" h
              case "$hp" in *:*) h="${hp%:*}";; *) h="$addr";; esac
              tcp "$h" "${hp##*:}" && pass "host: $name check ($check via $h) OK" || fail "host: $name check ($check via $h) FAILED";;
-      ping)  ping -c1 -W2 "$addr" >/dev/null 2>&1 && pass "host: $name pings" || fail "host: $name does not ping";;
+      ping)  ping1 "$addr" >/dev/null 2>&1 && pass "host: $name pings" || fail "host: $name does not ping";;
       *) say "(no automated check for this row)";;
     esac
   done < "$ROSTER_FILE"
@@ -222,7 +225,8 @@ c_workspace() {
     pass "workspace: scratch directory writable: $scratch"
     if mountpoint -q "$scratch" 2>/dev/null; then pass "workspace: scratch mount present: $scratch"; fi
   else fail "workspace: scratch directory is missing or not writable: $scratch — create it or set SNO_SCRATCH to a writable directory"; fi
-  local du; du=$(df --output=pcent / "$scratch" 2>/dev/null | grep -o '[0-9]*' | sort -rn | head -1)
+  # POSIX df -P (GNU and BSD): use percentage is column 5; the header row is skipped.
+  local du; du=$(df -P / "$scratch" 2>/dev/null | awk 'NR > 1 { sub(/%/, "", $5); print $5 }' | sort -rn | head -1)
   [ "${du:-0}" -lt 90 ] && pass "workspace: disk usage ok (max ${du:-?}%)" || fail "workspace: a filesystem is at ${du}% — biggest offenders: $(du -xhs "$scratch" "$HOME/.cache" 2>/dev/null | tr '\n' ' ')"
 }
 
@@ -233,7 +237,9 @@ c_drift() {
     jp=$(grep -oE 'localhost:[0-9]+' "$root/justfile" | grep -oE '[0-9]+' | sort -u)
     published=$(docker ps --format '{{.Ports}}' 2>/dev/null | grep -oE ':[0-9]+->' | grep -oE '[0-9]+' | sort -u)
     for p in $jp; do
-      if printf '%s\n' "$published" | grep -qx "$p" || ss -Hltn "( sport = :$p )" 2>/dev/null | grep -q .; then
+      # ss is Linux-only; lsof answers the same question on macOS.
+      if printf '%s\n' "$published" | grep -qx "$p" || ss -Hltn "( sport = :$p )" 2>/dev/null | grep -q . ||
+         lsof -nP -iTCP:"$p" -sTCP:LISTEN -t >/dev/null 2>&1; then
         pass "drift: justfile port $p has a live listener"
       else
         warn "drift: justfile references port $p but nothing publishes/listens on it — check docker port <container> before trusting the doc"

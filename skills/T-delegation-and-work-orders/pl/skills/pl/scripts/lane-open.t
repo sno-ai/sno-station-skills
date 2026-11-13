@@ -54,7 +54,7 @@ open_lane --repo multi --lane build --runtime codex
 check 'retired row permits opening the same lane' test "$status" -eq 0
 check 'named lane uses the exact address and heartbeat' test "$(cat "$root/out")" = \
   $'multi\tbuild\tpl.multi-build@'"$host"$'\tmulti-build\tcodex\tunclaimed\tRUN\tLane opened by a standalone PL.'
-check 'opening preserves retired and unrelated rows' cmp -s "$root/before" <(head -n -1 "$PL_REGISTRY")
+check 'opening preserves retired and unrelated rows' cmp -s "$root/before" <(sed '$d' "$PL_REGISTRY")
 resolved="$(bash "$script_dir/lane-resolve.sh" --repo multi --lane build 2>/dev/null)" || true
 check 'resolver selects the new row over the retired row' test "$resolved" = \
   $'build\tpl.multi-build@'"$host"$'\tunclaimed\towner.primary@'"$host"$'\tRUN'

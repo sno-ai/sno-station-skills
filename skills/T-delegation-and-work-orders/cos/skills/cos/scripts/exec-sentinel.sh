@@ -53,7 +53,8 @@ mkdir -p -- "$SCRATCH"
 KEY=$(printf '%s\0' "cos" "$LOG" "$REPO" "$PL" "$COS" "$WORK" "$FROM" | sha256sum)
 STATE="$SCRATCH/exec-sentinel-${KEY%% *}.state"
 printf '%s\n' "$STATE"
-logsz=$(stat -c%s -- "$LOG" 2>/dev/null || printf '0')
+# GNU stat, then BSD stat (macOS); 0 only when the log does not exist yet.
+logsz=$(stat -c%s -- "$LOG" 2>/dev/null || stat -f%z -- "$LOG" 2>/dev/null || printf '0')
 commits=$(git -C "$REPO" rev-list --count HEAD 2>/dev/null || printf '0')
 if [[ -f "$STATE" ]]; then
   read -r prev_log prev_commits stall alerts < "$STATE"

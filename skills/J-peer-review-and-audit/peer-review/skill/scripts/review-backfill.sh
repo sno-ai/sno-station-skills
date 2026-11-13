@@ -120,5 +120,5 @@ if [ "$count" = 0 ]; then
 fi
 
 # One call, not one per report: the ledger is rewritten whole on each save.
-# shellcheck disable=SC2046 # the manifest holds one path per line, no spaces
-xargs -a "$manifest" -d '\n' bash "$HERE/review-findings.sh" record --kind recovered
+# xargs -a and -d are GNU-only; NUL-separated input reads the same paths on GNU and BSD (macOS) xargs.
+tr '\n' '\0' < "$manifest" | xargs -0 bash "$HERE/review-findings.sh" record --kind recovered

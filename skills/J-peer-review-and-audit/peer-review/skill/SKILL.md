@@ -244,8 +244,8 @@ retire an artifact from review for good after its facts were corrected, which is
 of what a loop-breaker is for. Passes older than the window do not count against any cap, so
 an artifact that genuinely changed weeks later gets a fresh review without an override and
 without dodging the scope key. Within the window the cap binds in full.
-`REVIEW_CAP_WINDOW_HOURS=0` counts all history. If GNU
-`date -d` is unavailable the window is disabled and the wrapper says so on stderr, so a
+`REVIEW_CAP_WINDOW_HOURS=0` counts all history. If `date` cannot read the ledger's
+ISO 8601 times (GNU `-d` or BSD `-j -f`) the window is disabled and the wrapper says so on stderr, so a
 missing dependency fails closed rather than silently un-capping every review.
 
 ```

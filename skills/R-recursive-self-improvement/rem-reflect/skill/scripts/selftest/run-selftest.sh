@@ -51,7 +51,11 @@ for prog in "${ALLOW_PROGRAMS[@]}" claude codex sno; do ALLOWED["$prog"]=1; done
 
 # The unit suite runs under the normal environment because it exercises tools outside the journey's allowlist.
 printf 'run-selftest: unit suite...\n'
-( cd "$SCRIPTS" && node --test --experimental-strip-types ) >/dev/null 2>&1 || fail "the unit suite did not pass"
+# Its log is kept so a failure names the failing tests and every skipped test is shown, not hidden.
+UNIT_LOG="$WORK/unit.log"
+( cd "$SCRIPTS" && node --test --test-reporter=spec --experimental-strip-types ) >"$UNIT_LOG" 2>&1 \
+  || { sed -n '/failing tests:/,$p' "$UNIT_LOG" >&2; fail "the unit suite did not pass"; }
+sed -n 's/^﹣ \(.*\) ([0-9.]*ms) # \(.*\)$/run-selftest: SKIP unit test: \1 (\2)/p' "$UNIT_LOG"
 
 # Parse an strace `-e trace=execve` log into the basenames of every program actually exec'd. This
 # captures every child exec, including one launched by an absolute path that bypasses PATH.
@@ -73,7 +77,7 @@ else
   journey_out="$(env PATH="$ALLOW_BIN" EXEC_LOG="$EXEC_LOG" REM_SELFTEST=1 \
     node --experimental-strip-types "$HERE/journey.mjs" isolated 2>&1)" \
     || { printf '%s\n' "$journey_out" >&2; fail "the fixture journey did not pass under the allowlist PATH"; }
-  printf 'run-selftest: SKIP socket and absolute-path exec traces: strace is unavailable on this machine\n'
+  printf 'run-selftest: SKIP (Linux only): socket and absolute-path exec traces need strace\n'
 fi
 grep -q 'JOURNEY OK isolated' <<<"$journey_out" || { printf '%s\n' "$journey_out" >&2; fail "the journey did not report success"; }
 
@@ -109,6 +113,8 @@ if [[ -n "$PY_ABS" && -s "$EXECVE_LOG" ]]; then
     node --experimental-strip-types "$HERE/spawn-python.mjs" >/dev/null 2>&1 || true
   execd_basenames "$BYPASS_LOG" | grep -qx 'python3' \
     || fail "the execve recorder failed to catch an absolute-path python3 (allowlist check has a blind spot)"
+else
+  printf 'run-selftest: SKIP (Linux only): python3 negative control by absolute path needs python3 and the strace execve log\n'
 fi
 
 # The usage-statistics rows go through the real CLI, first with the recording `sno` shim and

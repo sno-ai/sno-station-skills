@@ -32,8 +32,13 @@ while (( $# )); do
 done
 [[ "$TO" =~ ^(claude-code|codex|cursor|hermes|openclaw)$ && "$WORK" =~ ^[a-z0-9][a-z0-9-]*$ && -n "$CWD" && -n "$CHECKPOINT" ]] || usage
 [[ "$TO" != hermes && "$TO" != openclaw || ( -n "$MODEL" && -n "$PROVIDER" ) ]] || usage
-CWD="$(realpath -m -- "$CWD")"
-CHECKPOINT="$(realpath -m -- "$CHECKPOINT")"
+# Like realpath -m: resolve the parts that exist, require nothing to exist. GNU first; python3 on macOS.
+resolve_path() {
+  realpath -m -- "$1" 2>/dev/null ||
+    python3 -c 'import os, sys; sys.stdout.buffer.write(os.path.realpath(os.fsencode(sys.argv[1])))' "$1"
+}
+CWD="$(resolve_path "$CWD")"
+CHECKPOINT="$(resolve_path "$CHECKPOINT")"
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${SNO_REACH_STATE_ROOT:-${SNO_REACH_ROOT:-$HOME/.local/state/sno-reach}}"
 DEADLINE=$((SECONDS + 295))
@@ -51,7 +56,7 @@ section() { awk -v heading="## $1" '$0 == heading {inside=1; next} /^## / {insid
 [[ -r "$CHECKPOINT" ]] || { printf 'lost next_action=blocked missing=readable-brief path=%s\n' "$CHECKPOINT"; exit 1; }
 [[ -d "$CWD" ]] || { log_failure checkout "$CWD" 'directory unavailable' 'no recovery completed; brief retained'; exit 1; }
 recorded="$(field checkout)"
-if [[ -n "$recorded" && "$(realpath -m -- "$recorded")" != "$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$CWD")" ]]; then
+if [[ -n "$recorded" && "$(resolve_path "$recorded")" != "$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$CWD")" ]]; then
   log_failure checkout "$CWD" "brief names $recorded" 'no recovery completed; use the recorded checkout'
   exit 1
 fi
@@ -79,7 +84,7 @@ if [[ -n "$session" && "$verdict" != wait && ( "$original" == claude-code || "$o
     answer="$(cd -- "$CWD" && bounded 120 "${native[@]}" 2>&1)" || native_status=$?
     printf '%s\n' "$answer"
     if (( native_status == 0 )) && [[ -n "${answer//[[:space:]]/}" ]]; then
-      action="$(sed -n 's/^CONTINUITY_ACTION \(completed\|unfinished\|blocked\)$/\1/p' <<<"$answer" | tail -n1)"
+      action="$(sed -nE 's/^CONTINUITY_ACTION (completed|unfinished|blocked)$/\1/p' <<<"$answer" | tail -n1)"
       printf 'resumed next_action=%s session=%s\n' "${action:-unfinished}" "$session"
       exit 0
     fi

@@ -180,7 +180,13 @@ test('a Cursor labeling turn runs cursor-agent in the isolated home with the pro
   process.env.HOME = home;
   try { assert.equal(run(store, new Date('2026-10-10T12:00:00Z'), 'u').code, 0); } finally { process.env.HOME = previousHome; }
   const loopHome = join(store, '.loop-home', 'cursor');
-  assert.equal(readFileSync(join(loopHome, '.config', 'cursor', 'auth.json'), 'utf8'), '{"accessToken":"t"}');
+  // The login is a copy of auth.json on Linux; on macOS it lives in the login keychains, which are linked instead.
+  if (process.platform === 'darwin') {
+    assert.equal(readlinkSync(join(loopHome, 'Library', 'Keychains')), join(home, 'Library', 'Keychains'));
+    assert.equal(existsSync(join(loopHome, '.config', 'cursor', 'auth.json')), false, 'no auth.json copy on macOS');
+  } else {
+    assert.equal(readFileSync(join(loopHome, '.config', 'cursor', 'auth.json'), 'utf8'), '{"accessToken":"t"}');
+  }
   assert.equal(lstatSync(join(loopHome, '.local', 'share')).isSymbolicLink(), true);
   assert.equal(readlinkSync(join(loopHome, '.local', 'share')), join(home, '.local', 'share'));
 

@@ -19,6 +19,7 @@ units:
   peer-review:                 {cat: J, tier: shipped}
   less-is-more:                {cat: J, tier: shipped}
   test-writer:                 {cat: J, tier: candidate}
+  cross-vendor-security-audit: {cat: J, tier: candidate}
   medic:                       {cat: M, tier: shipped}
   sno-cli:                     {cat: M, tier: shipped}
   codex-coder:                 {cat: M, tier: candidate}

@@ -68,7 +68,7 @@ load_words() {
 
 load_words
 
-now() { date -Is; }
+now() { date -Iseconds; }   # -Is is GNU-only shorthand; BSD date takes the long form
 
 # JSONL fields are written by naive printf — map ALL control bytes (CR, ESC, BEL,
 # LF, TAB, …) to spaces and strip quotes/backslashes. Ledger integrity > fidelity.

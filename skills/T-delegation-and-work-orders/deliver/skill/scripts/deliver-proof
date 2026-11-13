@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Usage: sno deliver-proof run CHARTER N -- COMMAND... | see CHARTER N FILE TEXT | check CHARTER.
-# Needs bash 4+ and GNU coreutils (Linux). The charter basename drops a final .md.
+# Needs bash 4+; on a system without GNU coreutils (macOS) also python3. The charter basename drops a final .md.
 # A command runs in the current directory. A `see` evidence path is read from the current
 # directory and recorded relative to the charter's directory.
 # A Success check whose text starts with ~~ (struck through) is dropped: not required, not provable.
@@ -10,10 +10,17 @@
 # Repeated runs within one UTC second use numbered log names.
 set -Eeuo pipefail
 
-if (( BASH_VERSINFO[0] < 4 )) || [[ "$(realpath --version 2>&1)" != *GNU* ]]; then
-    printf 'deliver-proof needs bash 4+ and GNU coreutils (Linux); found bash %s\n' "$BASH_VERSION" >&2
+if (( BASH_VERSINFO[0] < 4 )); then
+    printf 'deliver-proof needs bash 4+; found bash %s\n' "$BASH_VERSION" >&2
     exit 2
 fi
+
+# GNU tools first; BSD stat and python3 where GNU is absent (macOS).
+file_mode() { stat -c %a -- "$1" 2>/dev/null || stat -f %Mp%Lp -- "$1"; }
+relative_to() {  # <dir> <path>: like realpath -m --relative-to=<dir> -- <path>
+    realpath -m --relative-to="$1" -- "$2" 2>/dev/null ||
+        python3 -c 'import os, sys; sys.stdout.buffer.write(os.fsencode(os.path.relpath(os.path.realpath(sys.argv[2]), os.path.realpath(sys.argv[1]))))' "$1" "$2"
+}
 
 usage() {
     local status="${1:-2}"
@@ -24,7 +31,7 @@ usage() {
 append_row() {
     local charter="$1" row="$2" tmp
     tmp="$(mktemp "${charter}.XXXXXX")"
-    chmod --reference="$charter" -- "$tmp"
+    chmod "$(file_mode "$charter")" "$tmp"
     PROOF_ROW="$row" awk '
         function flush_blanks(    i) {
             for (i = 0; i < blanks; i++) print ""
@@ -134,7 +141,7 @@ done
 at="$(date -u +%Y%m%dT%H%M%SZ)"
 if [[ $1 == see ]]; then
     [[ -f $4 && -s $4 ]] || { printf 'evidence missing or empty: %s\n' "$4" >&2; exit 2; }
-    log="$(realpath -m --relative-to="$charter_dir" -- "$4")"
+    log="$(relative_to "$charter_dir" "$4")"
     how="see: $5"
     status=0
     result=pass

@@ -2,3 +2,8 @@ Sno Station Skills
 
 Copyright Sno Station Skills contributors.
 Licensed under the Apache License, Version 2.0.
+
+skills/J-peer-review-and-audit/cross-vendor-security-audit is based on
+cloudflare/security-audit-skill (https://github.com/cloudflare/security-audit-skill),
+Copyright (c) 2025-2026 Cloudflare, Inc., used under the MIT License. The license text ships
+with the skill as LICENSE-MIT-cloudflare.

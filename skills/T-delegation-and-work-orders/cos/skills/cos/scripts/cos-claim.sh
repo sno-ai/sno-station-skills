@@ -21,7 +21,7 @@ set -Eeuo pipefail
 
 for tool in flock jq sno awk; do
     command -v "$tool" >/dev/null 2>&1 || {
-        printf 'cos-claim: %s is required but not installed (this script needs Linux, flock, jq, sno, awk)\n' "$tool" >&2
+        printf 'cos-claim: %s is required but not installed (this script needs flock, jq, sno, awk)\n' "$tool" >&2
         exit 69
     }
 done
@@ -34,6 +34,24 @@ readonly PL_LEASE_SECONDS=86400
 die() {
     printf 'cos-claim: %s\n' "$*" >&2
     exit "${DIE_CODE:-65}"
+}
+
+# The GNU-only spellings this script needs, each with its BSD (macOS) form. GNU is tried
+# first and succeeds on Linux, so Linux behaviour is unchanged.
+# Octal mode of a file, following symlinks as `chmod --reference` does.
+file_mode() { stat -L -c %a -- "$1" 2>/dev/null || stat -L -f '%Mp%Lp' -- "$1"; }
+# The UTC ISO 8601 time of an epoch: GNU date reads "@N", BSD date reads -r N.
+epoch_iso() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
+# Epoch seconds of an ISO 8601 time. BSD date needs the exact input format, and its %z
+# accepts neither "Z" nor a colon inside the offset.
+iso_epoch() {
+    local text="$1"
+    date -u -d "$text" +%s 2>/dev/null && return 0
+    # BSD %S takes whole seconds only; GNU %s truncates a fraction, so drop it the same way.
+    [[ ! "$text" =~ ^([^.]*)\.[0-9]+(.*)$ ]] || text="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
+    [[ "$text" != *Z ]] || text="${text%Z}+0000"
+    [[ ! "$text" =~ ^(.*[+-][0-9][0-9]):([0-9][0-9])$ ]] || text="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
+    date -u -j -f '%Y-%m-%dT%H:%M:%S%z' "$text" +%s 2>/dev/null
 }
 
 lock_registry() {
@@ -58,7 +76,7 @@ card_updated_epoch() {
     [[ -f "$card" && ! -L "$card" ]] || return 1
     updated="$(jq -er '.updated | strings | select(length > 0)' "$card" 2>/dev/null)" ||
         return 1
-    date -u -d "$updated" +%s 2>/dev/null
+    iso_epoch "$updated"
 }
 
 seat_last_seen_epoch() {
@@ -148,7 +166,7 @@ reclaim_expired_lanes() {
         }
         { print }
     ' "$REGISTRY" >"$staging"
-    chmod --reference="$REGISTRY" "$staging"
+    chmod -- "$(file_mode "$REGISTRY")" "$staging"
     mv -f -- "$staging" "$REGISTRY"
 }
 
@@ -267,7 +285,7 @@ write_owner() {
         }
         { print }
     ' "$REGISTRY" >"$staging"
-    /bin/chmod --reference="$REGISTRY" "$staging"
+    /bin/chmod -- "$(file_mode "$REGISTRY")" "$staging"
     mv -f -- "$staging" "$REGISTRY"
 }
 
@@ -358,7 +376,7 @@ cmd_register() {
             staging="$(mktemp "${REGISTRY}.header.XXXXXXXXXX")"
             registry_header >"$staging"
             cat "$REGISTRY" >>"$staging"
-            chmod --reference="$REGISTRY" "$staging"
+            chmod -- "$(file_mode "$REGISTRY")" "$staging"
             mv -f -- "$staging" "$REGISTRY"
         fi
     fi
@@ -381,7 +399,7 @@ cmd_register() {
         now="$(date -u +%Y-%m-%dT%H:%MZ)"
         staging="$(mktemp "${REGISTRY}.register.XXXXXXXXXX")"
         cat "$REGISTRY" >"$staging"
-        chmod --reference="$REGISTRY" "$staging"
+        chmod -- "$(file_mode "$REGISTRY")" "$staging"
         printf '%s\t-\t%s\t%s-cos%s\t%s\t%s\tRUN\tCOS identity registered %s.\n' \
             "$repo" "$address" "$repo" "${letter:+-$letter}" "$runtime" \
             "$owner_id" "$now" >>"$staging"
@@ -394,7 +412,7 @@ cmd_register() {
                 $1 == repo && $2 == "-" && $3 == address && $6 == owner { $7 = "RUN" }
                 { print }
             ' "$REGISTRY" >"$staging"
-            chmod --reference="$REGISTRY" "$staging"
+            chmod -- "$(file_mode "$REGISTRY")" "$staging"
             mv -f -- "$staging" "$REGISTRY"
         fi
     else
@@ -505,7 +523,7 @@ cmd_reap() {
 
     reach_root="$REACH_ROOT"
     now="$(now_epoch)"
-    now_iso="$(date -u -d "@$now" +%Y-%m-%dT%H:%M:%SZ)" ||
+    now_iso="$(epoch_iso "$now")" ||
         die 'could not render the current time. Nothing was written.'
     collect_expired_lanes "$repo" "$reach_root" "$now" expired_lanes
     reclaim_expired_lanes "$reach_root" "$now" "$now_iso" expired_lanes
@@ -545,7 +563,7 @@ cmd_open() {
     mine="$(owner_token "$repo")"
     reach_root="$REACH_ROOT"
     lease_now="$(now_epoch)"
-    lease_now_iso="$(date -u -d "@$lease_now" +%Y-%m-%dT%H:%M:%SZ)" ||
+    lease_now_iso="$(epoch_iso "$lease_now")" ||
         die 'could not render the current time. Nothing was written.'
 
     # The complete validation pass precedes every registry or seat mutation.
@@ -604,7 +622,7 @@ cmd_open() {
     registry_tmp="$(mktemp "${REGISTRY}.open.XXXXXXXXXX")"
     if [[ -f "$REGISTRY" ]]; then
         cat "$REGISTRY" >"$registry_tmp"
-        chmod --reference="$REGISTRY" "$registry_tmp"
+        chmod -- "$(file_mode "$REGISTRY")" "$registry_tmp"
     else
         registry_header >"$registry_tmp"
         chmod 600 "$registry_tmp"

@@ -17,7 +17,8 @@
 # Usage:
 #   script-running.sh <script-name> [--arg <substring>]...
 #
-# Exit: 0 running (pids on stdout) · 1 not running · 2 usage.
+# Exit: 0 running (pids on stdout) · 1 not running · 2 usage · 3 processes cannot be read.
+# Linux reads /proc; macOS needs python3 for the kernel's argv listing.
 set -Eeuo pipefail
 
 usage() {
@@ -34,6 +35,7 @@ rather than a substring of its whole command line.
 exit 0  running — one line on stdout: RUNNING <pid>...
 exit 1  not running
 exit 2  usage error
+exit 3  the process table could not be read (macOS without a working python3)
 EOF
 }
 
@@ -65,39 +67,101 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-live=()
-for cmdline in /proc/[0-9]*/cmdline; do
-  pid="${cmdline%/cmdline}"
-  pid="${pid#/proc/}"
-  [ "$pid" = "$$" ] && continue
+# macOS has no /proc. The kernel gives each process's exact argv through sysctl
+# KERN_PROCARGS2; this prints, per process, pid NUL argc NUL and then argc arguments each
+# followed by NUL. Processes it may not read (another user's, or one that just exited) are
+# left out, so on macOS only this user's processes are seen.
+readonly MACOS_ARGV_PY='
+import ctypes, struct, sys
+libc = ctypes.CDLL(None, use_errno=True)
+def sysctl(mib, size):
+    buf = ctypes.create_string_buffer(size)
+    n = ctypes.c_size_t(size)
+    if libc.sysctl((ctypes.c_int * len(mib))(*mib), len(mib), buf, ctypes.byref(n), None, 0):
+        return None
+    return buf.raw[:n.value]
+argmax = struct.unpack("i", sysctl([1, 8], 4))[0]            # CTL_KERN, KERN_ARGMAX
+count = libc.proc_listallpids(None, 0)
+pids = (ctypes.c_int * (count + 64))()
+count = libc.proc_listallpids(pids, ctypes.sizeof(pids))
+if count <= 0:
+    sys.exit("proc_listallpids returned no processes")
+out = sys.stdout.buffer
+for pid in pids[:count]:
+    raw = sysctl([1, 49, pid], argmax)                          # CTL_KERN, KERN_PROCARGS2
+    if not raw or len(raw) < 4:
+        continue
+    argc = struct.unpack("i", raw[:4])[0]
+    rest = raw[4:]
+    start = rest.find(b"\0")                                    # skip the executable path
+    if start < 0:
+        continue
+    while start < len(rest) and rest[start] == 0:
+        start += 1
+    args = rest[start:].split(b"\0")[:argc]
+    if len(args) < argc:
+        continue
+    out.write(b"%d\0%d\0" % (pid, argc) + b"".join(a + b"\0" for a in args))
+'
 
-  # A process can exit between the glob expanding and this read, so the open itself must be
-  # inside the silenced group — a redirection failure is reported by the shell, not by
-  # mapfile, and an unguarded one prints a spurious error on every busy machine.
-  argv=()
-  { mapfile -d '' -t argv < "$cmdline"; } 2>/dev/null || continue
-  [ "${#argv[@]}" -gt 0 ] || continue
+live=()
+consider() { # pid argv...
+  local pid="$1"
+  shift
+  [ "$pid" = "$$" ] && return 0
+  [ "$#" -gt 0 ] || return 0
 
   # Position, not substring: the script is argv[0], or argv[0] is an interpreter and the
   # script is argv[1]. Everything from there rightwards is that script's own arguments.
-  if [ "${argv[0]##*/}" = "$TARGET" ]; then
-    own_args=("${argv[@]:1}")
-  elif [ "${#argv[@]}" -gt 1 ] && [ "${argv[1]##*/}" = "$TARGET" ]; then
-    own_args=("${argv[@]:2}")
+  local own_args
+  if [ "${1##*/}" = "$TARGET" ]; then
+    own_args=("${@:2}")
+  elif [ "$#" -gt 1 ] && [ "${2##*/}" = "$TARGET" ]; then
+    own_args=("${@:3}")
   else
-    continue
+    return 0
   fi
 
-  joined="${own_args[*]:-}"
-  matched=1
-  for want in "${REQUIRED_ARGS[@]}"; do
+  local joined="${own_args[*]:-}" want
+  for want in ${REQUIRED_ARGS[@]+"${REQUIRED_ARGS[@]}"}; do
     case "$joined" in
       *"$want"*) ;;
-      *) matched=0; break ;;
+      *) return 0 ;;
     esac
   done
-  [ "$matched" = 1 ] && live+=("$pid")
-done
+  live+=("$pid")
+}
+
+if [ -d /proc/self ]; then
+  for cmdline in /proc/[0-9]*/cmdline; do
+    pid="${cmdline%/cmdline}"
+    pid="${pid#/proc/}"
+
+    # A process can exit between the glob expanding and this read, so the open itself must be
+    # inside the silenced group — a redirection failure is reported by the shell, not by
+    # mapfile, and an unguarded one prints a spurious error on every busy machine.
+    argv=()
+    { mapfile -d '' -t argv < "$cmdline"; } 2>/dev/null || continue
+    consider "$pid" ${argv[@]+"${argv[@]}"}
+  done
+else
+  # The snapshot goes to a file, not a pipe: a pipe would fork a copy of this shell, carrying
+  # this script's own argv, while the listing runs.
+  snapshot="$(mktemp)"
+  trap 'rm -f -- "$snapshot"' EXIT
+  if ! python3 -c "$MACOS_ARGV_PY" >"$snapshot"; then
+    printf 'script-running.sh: no /proc here and the sysctl process listing failed; cannot tell whether %s is running\n' "$TARGET" >&2
+    exit 3
+  fi
+  while IFS= read -r -d '' pid && IFS= read -r -d '' argc; do
+    argv=()
+    for ((i = 0; i < argc; i++)); do
+      IFS= read -r -d '' arg
+      argv+=("$arg")
+    done
+    consider "$pid" ${argv[@]+"${argv[@]}"}
+  done <"$snapshot"
+fi
 
 if [ "${#live[@]}" -gt 0 ]; then
   printf 'RUNNING %s\n' "${live[*]}"

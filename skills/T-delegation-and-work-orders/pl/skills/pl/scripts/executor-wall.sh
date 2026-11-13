@@ -28,6 +28,10 @@ done
     printf 'executor-wall: --spawn-id must be one safe token\n' >&2
     exit 2
 }
+[[ "$(uname -s)" == Linux ]] || {
+    printf 'executor-wall: needs Linux with a systemd user session and cgroups; this host runs %s, so no wall was armed and nothing was signalled\n' "$(uname -s)" >&2
+    exit 69
+}
 command -v jq >/dev/null
 command -v flock >/dev/null
 command -v systemctl >/dev/null

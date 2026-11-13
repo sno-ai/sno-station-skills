@@ -5,6 +5,8 @@ set -Eeuo pipefail
 lane_resolve="$(dirname -- "$(readlink -f -- "$0")")/lane-resolve.sh"
 
 die() { local code="$1"; shift; printf 'lane-open: %s\n' "$*" >&2; exit "$code"; }
+# Octal mode of a file, following symlinks as GNU `chmod --reference` does; BSD stat on macOS.
+file_mode() { stat -L -c %a -- "$1" 2>/dev/null || stat -L -f '%Mp%Lp' -- "$1"; }
 
 repo=''
 lane=all
@@ -71,7 +73,7 @@ staging=''
 trap '[[ -z "$staging" ]] || rm -f -- "$staging"' EXIT
 staging="$(mktemp "${registry}.open.XXXXXXXXXX")"
 cat -- "$registry" >"$staging"
-chmod --reference="$registry" "$staging"
+chmod -- "$(file_mode "$registry")" "$staging"
 printf -v row '%s\t%s\t%s\t%s\t%s\tunclaimed\tRUN\tLane opened by a standalone PL.' \
   "$repo" "$lane" "$address" "$heartbeat" "$runtime"
 printf '%s\n' "$row" >>"$staging"

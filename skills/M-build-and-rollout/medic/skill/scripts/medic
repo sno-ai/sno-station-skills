@@ -131,7 +131,7 @@ else
   files_bad="$(jq -r '.skills[]? | select(.result != "ok") | .target' <<<"$doctor")"
   if [[ -n "$files_bad" ]]; then
     n="$(grep -c . <<<"$files_bad")"
-    first="$(head -n3 <<<"$files_bad" | paste -sd, | sed 's/,/, /g')"
+    first="$(head -n3 <<<"$files_bad" | paste -sd, - | sed 's/,/, /g')"
     warn skill-files "$n skill file(s) fail sno doctor, first: $first" "run: sno update"
   else
     ok skill-files "every installed skill file passes sno doctor"

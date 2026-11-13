@@ -10,7 +10,7 @@ command_path="${1:-$here/rotate-agent-resume}"
 checkpoint_cmd=''
 for candidate in "$here/../../../handoff/skill/scripts/handoff-checkpoint" "$here/../../handoff/scripts/handoff-checkpoint" \
   "$HOME/.claude/skills/handoff/scripts/handoff-checkpoint" "$HOME/.agents/skills/handoff/scripts/handoff-checkpoint"; do
-  checkpoint_cmd="$(realpath -e "$candidate" 2>/dev/null)" && break
+  [[ -e "$candidate" ]] && checkpoint_cmd="$(realpath -- "$candidate")" && break
 done
 [[ -n "$checkpoint_cmd" ]] || { printf 'rotate-agent-resume.t: handoff-checkpoint not found in source, published or deployed layout\n' >&2; exit 1; }
 root="$(mktemp -d)"
@@ -71,6 +71,8 @@ case "$verb" in
 esac
 SH
 chmod +x "$root/bin/claude" "$root/bin/codex" "$root/bin/sno"
+# The scripts need bash 4+; /usr/bin and /bin hold only bash 3.2 on macOS, so keep the bash running this test.
+ln -s -- "$BASH" "$root/bin/bash"
 export PATH="$root/bin:/usr/bin:/bin"
 git -C "$root/work" init -q -b main
 printf 'input\n' >"$root/work/input.txt"
@@ -134,7 +136,7 @@ reset_calls
 grep -q 'operation=verify' "$root/err" || fail 'auxiliary failure unlogged'
 ok 'failed checkout observation logs its cause and retains usable task facts'
 reset_calls
-[[ "$(NATIVE_FAIL=1 RELEASE_FAIL=1 recover uncertain)" == 1 ]] && [[ "$(wc -l <"$root/spawned")" == 1 ]] || fail 'uncertain release starts competing receiver'
+[[ "$(NATIVE_FAIL=1 RELEASE_FAIL=1 recover uncertain)" == 1 ]] && [[ "$(wc -l <"$root/spawned")" -eq 1 ]] || fail 'uncertain release starts competing receiver'
 grep -q 'transfer unresolved' "$root/err" && ! grep -q '^rebuilt ' "$root/out" || fail 'uncertain release reported recovery'
 ok 'missing release receipt prevents a second receiver and reports unresolved transfer'
 reset_calls
@@ -146,7 +148,7 @@ printf '# Empty task\n' >"$root/empty.md"
 ok 'missing objective/next action produces lost without inventing work'
 reset_calls
 [[ "$(NATIVE_FAIL=1 recover duplicate)" == 0 ]] || fail 'initial duplicate scenario'
-[[ "$(NATIVE_FAIL=1 recover duplicate)" == 1 && "$(wc -l <"$root/spawned")" == 1 ]] || fail 'Reach existing receiver should prevent another spawn'
+[[ "$(NATIVE_FAIL=1 recover duplicate)" == 1 && "$(wc -l <"$root/spawned")" -eq 1 ]] || fail 'Reach existing receiver should prevent another spawn'
 grep -q 'receiver already exists' "$root/err" && [[ ! -e "$root/state/rotate-agent" ]] || fail 'a second once registry was created'
 ok 'existing Reach receiver is reused for inspection rather than another ownership registry'
 reset_calls

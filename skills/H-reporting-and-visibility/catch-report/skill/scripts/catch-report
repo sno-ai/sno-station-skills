@@ -7,7 +7,7 @@
 #   brief The page an agent hands to the user: both brains together, with examples and how to read them.
 #   self  Self-check: an agent's own words admitting an error in its own conversation, judged by that
 #         agent's own model (claude judges claude conversations, codex codex ones, cursor-agent cursor ones).
-# Exit 0 printed, 1 when run could read neither record, 2 bad usage. Needs bash 4+, GNU date/find/grep and jq;
+# Exit 0 printed, 1 when run could read neither record, 2 bad usage. Needs bash 4+ and jq, with GNU or BSD (macOS) date and find;
 # self also needs the claude, codex and/or cursor-agent command line.
 set -Eeuo pipefail
 
@@ -61,11 +61,39 @@ done
 [[ "$LIMIT" =~ ^[1-9][0-9]*$ ]] || { printf 'catch-report: --limit must be a positive number\n' >&2; usage; }
 [[ "$AGENT" =~ ^(claude|codex|cursor|both)$ ]] || { printf 'catch-report: --agent must be claude, codex, cursor or both\n' >&2; usage; }
 
+# GNU date reads free text with -d. BSD date (macOS) has no -d, so there the same UTC instants come from
+# -v (relative), -j -f (a YYYY-MM-DD[ HH:MM[:SS]] date) and -r (epoch seconds).
+readonly TFMT=%Y-%m-%dT%H:%M:%S
+if [[ "$(date -u -d @0 +%s 2>/dev/null)" == 0 ]]; then GNU_DATE=1; else GNU_DATE=0; fi
+utc_ago() { # <n> <m|h|d>
+  local unit
+  if (( GNU_DATE )); then
+    case "$2" in m) unit=minutes ;; h) unit=hours ;; d) unit=days ;; esac
+    date -u -d "$1 $unit ago" +"$TFMT"
+  else
+    case "$2" in m) unit=M ;; h) unit=H ;; d) unit=d ;; esac
+    date -u -v-"$1$unit" +"$TFMT"
+  fi
+}
+utc_at() { # <date text>
+  local t="$1"
+  if (( GNU_DATE )); then date -u -d "$t" +"$TFMT" 2>/dev/null; return; fi
+  [[ ! "$t" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || t="$t 00:00:00"
+  [[ ! "$t" =~ ^([0-9-]{10})[T\ ]([0-9]{2}:[0-9]{2})$ ]] || t="${BASH_REMATCH[1]} ${BASH_REMATCH[2]}:00"
+  [[ "$t" =~ ^([0-9]{4}-[0-9]{2}-[0-9]{2})[T\ ]([0-9]{2}:[0-9]{2}:[0-9]{2})$ ]] || return 1
+  date -u -j -f '%Y-%m-%d %H:%M:%S' "${BASH_REMATCH[1]} ${BASH_REMATCH[2]}" +"$TFMT" 2>/dev/null
+}
+utc_epoch() { # <TFMT time>
+  if (( GNU_DATE )); then date -u -d "$1" +%s; else date -u -j -f "$TFMT" "$1" +%s; fi
+}
+utc_from_epoch() { # <epoch seconds>
+  if (( GNU_DATE )); then date -u -d "@$1" +"$TFMT"; else date -u -r "$1" +"$TFMT"; fi
+}
+
 if [[ "$SINCE" =~ ^([0-9]+)([mhd])$ ]]; then
-  case "${BASH_REMATCH[2]}" in m) unit=minutes ;; h) unit=hours ;; d) unit=days ;; esac
-  cutoff="$(date -u -d "${BASH_REMATCH[1]} $unit ago" +%Y-%m-%dT%H:%M:%S)"
+  cutoff="$(utc_ago "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}")"
 else
-  cutoff="$(date -u -d "$SINCE" +%Y-%m-%dT%H:%M:%S 2>/dev/null)" || { printf 'catch-report: cannot read --since %s (use 7d, 12h, 30m or a date)\n' "$SINCE" >&2; exit 2; }
+  cutoff="$(utc_at "$SINCE")" || { printf 'catch-report: cannot read --since %s (use 7d, 12h, 30m or a date)\n' "$SINCE" >&2; exit 2; }
 fi
 cutoff_day="${cutoff%%T*}"
 
@@ -185,7 +213,9 @@ collect() { # <agent> <dir>
     case "$agent" in claude) sessions_claude=$((sessions_claude + 1)) ;; codex) sessions_codex=$((sessions_codex + 1)) ;; cursor) sessions_cursor=$((sessions_cursor + 1)) ;; esac
     jq -cR 'fromjson? // empty' -- "$f" 2>/dev/null | jq -c --arg failing "$FAILING" "$rows" 2>/dev/null | jq -s -c --arg admit "$ADMIT" --arg admit_zh "$ADMIT_ZH" --arg cut "$cutoff" --argjson per "$PER_SESSION" "$PICK" 2>/dev/null |
       jq -c --arg agent "$agent" --arg file "$f" '. + {agent: $agent, file: $file}' >>"$work/all.jsonl" || true
-  done < <(find "$dir" -type f ${only[@]+"${only[@]}"} -name '*.jsonl' -newermt "$cutoff" -size -60M -print0 2>/dev/null | sort -z)
+  # The UTC suffix: BSD find (macOS) cannot read the T form and silently matches wrongly, and GNU find
+  # would otherwise read the time as local.
+  done < <(find "$dir" -type f ${only[@]+"${only[@]}"} -name '*.jsonl' -newermt "$cutoff_day ${cutoff#*T} UTC" -size -60M -print0 2>/dev/null | sort -z)
 }
 case "$AGENT" in
   both) collect claude "$CLAUDE_DIR"; collect codex "$CODEX_DIR" ;;
@@ -199,6 +229,12 @@ total_cands="$(grep -c . "$work/all.jsonl" || true)"
 awk -v l="$LIMIT" -v n="$total_cands" 'BEGIN { if (n > l) for (k = 0; k < l; k++) pick[int(k * n / l) + 1] = 1 } n <= l || (NR in pick)' "$work/all.jsonl" >"$work/cands.jsonl"
 
 # 2. Judgment: the agent's own model reads each moment (bounded by --limit, four at a time).
+# new_session <command...>: run it as the leader of a new session and process group. setsid(1) is util-linux;
+# macOS has none, so perl makes the same setsid(2) call there.
+new_session() {
+  if command -v setsid >/dev/null 2>&1; then setsid "$@"
+  else perl -MPOSIX -e 'POSIX::setsid() or die "setsid: $!\n"; exec { $ARGV[0] } @ARGV or die "exec $ARGV[0]: $!\n"' "$@"; fi
+}
 judge() { # <index> : writes $work/verdict.<index>
   local i="$1" rec agent prompt out v
   rec="$(sed -n "${i}p" "$work/cands.jsonl")"
@@ -227,7 +263,7 @@ NONE: anything else: routine progress (starting the next step, checking that som
     if [[ "$(uname -s)" == Darwin ]]; then mkdir -p "$home/Library"; ln -s "$HOME/Library/Keychains" "$home/Library/Keychains"
     else mkdir -p "$home/.config/cursor"; cp -- "$HOME/.config/cursor/auth.json" "$home/.config/cursor/" 2>/dev/null || true; fi
     # Its own process group (timeout's), killed afterwards: cursor-agent leaves a language server running (observed).
-    out="$(cd -- "$cwd" && printf '%s' "$prompt" | HOME="$home" setsid bash -c 'printf %s "$$" > "$1"; exec timeout 180 cursor-agent -p --trust --mode ask' _ "$work/cursor-group.$i" 2>/dev/null || true)"
+    out="$(cd -- "$cwd" && printf '%s' "$prompt" | HOME="$home" new_session bash -c 'printf %s "$$" > "$1"; exec timeout 180 cursor-agent -p --trust --mode ask' _ "$work/cursor-group.$i" 2>/dev/null || true)"
     kill -KILL -- "-$(cat "$work/cursor-group.$i" 2>/dev/null)" 2>/dev/null || true
   elif [[ "$agent" == claude ]]; then
     # --tools takes every following word as a tool name, so the prompt goes in on standard input.
@@ -318,8 +354,8 @@ if [[ "$mode" == self ]]; then
 fi
 
 # ---- brief: the page the agent hands to the user
-cutoff_epoch="$(date -u -d "$cutoff" +%s)"; now_epoch="$(date -u +%s)"
-prev_cutoff="$(date -u -d "@$((2 * cutoff_epoch - now_epoch))" +%Y-%m-%dT%H:%M:%S)"
+cutoff_epoch="$(utc_epoch "$cutoff")"; now_epoch="$(date -u +%s)"
+prev_cutoff="$(utc_from_epoch "$((2 * cutoff_epoch - now_epoch))")"
 if [[ "$SINCE" =~ ^([0-9]+)d$ ]]; then
   n="${BASH_REMATCH[1]}"; period="last $n days"; before="the $n days before"; (( n != 1 )) || { period="last day"; before="the day before"; }
 elif [[ "$SINCE" =~ ^([0-9]+)h$ ]]; then period="last ${BASH_REMATCH[1]} hours"; before="the ${BASH_REMATCH[1]} hours before"

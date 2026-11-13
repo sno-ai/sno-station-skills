@@ -18,6 +18,7 @@
         "./skills/H-reporting-and-visibility/away-brief/skill",
         "./skills/H-reporting-and-visibility/catch-report/skill",
         "./skills/J-peer-review-and-audit/agentic-walkthrough/skill",
+        "./skills/J-peer-review-and-audit/cross-vendor-security-audit/skill",
         "./skills/J-peer-review-and-audit/e2e/skills/e2e-environment-preflight",
         "./skills/J-peer-review-and-audit/e2e/skills/e2e-red-triage",
         "./skills/J-peer-review-and-audit/first-principles-review/skill",

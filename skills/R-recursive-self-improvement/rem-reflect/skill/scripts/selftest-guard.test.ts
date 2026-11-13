@@ -6,6 +6,10 @@ import { testTempRoot } from './test-helpers.ts';
 import { join } from 'node:path';
 
 test('self-test run refuses a missing store before reading sessions or invoking sno', t => {
+  if (process.platform !== 'linux' || spawnSync('strace', ['--version']).error) {
+    t.skip('Linux only: the file, socket and exec trace needs strace');
+    return;
+  }
   const dir = mkdtempSync(join(testTempRoot, 'rem-selftest-guard-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const home = join(dir, 'home');

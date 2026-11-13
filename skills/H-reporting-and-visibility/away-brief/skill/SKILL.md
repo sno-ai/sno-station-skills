@@ -30,7 +30,8 @@ A source it cannot read prints `not read: <what> -> <why>` and the rest of the p
 its own share of the 60 lines; items beyond it are replaced by an `and N more not shown` line, so a long Done list
 never pushes out what waits for the owner or the quota.
 
-Prerequisites: bash 4+, GNU coreutils, git and jq. It uses `sno deliver-proof` (the `deliver` skill) to count
+Prerequisites: bash 4+, git and jq; without GNU date (macOS) also python3, and a `--since` date must then be
+ISO 8601. It uses `sno deliver-proof` (the `deliver` skill) to count
 proofs, `sno reach inbox`, `sno heartbeat --list` and `sno subscription-quota-check` when they are installed.
 
 ## Use

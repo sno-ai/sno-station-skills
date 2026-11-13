@@ -3,7 +3,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { run } from './rem-reflect.ts';
@@ -103,7 +104,14 @@ test('the shipped unit source has no crontab and no busy-wait loop', () => {
 // foreground daemon, so it is spawned detached (never awaited); a unique label avoids colliding with a
 // real rem-reflect heartbeat; heartbeat fires the hook at once, so the run gets a fixture store.
 // The arm is stopped in a finally and the process group killed as a backstop.
-test('the installed heartbeat accepts the exact arm line flags and stops again', async () => {
+test('the installed heartbeat accepts the exact arm line flags and stops again', async t => {
+  // The test-helpers stand-in `sno` always spawns, so the ENOENT guard below cannot see a machine with no
+  // installed sno; the stand-in forwards `heartbeat` to this binary, so its absence is checked here.
+  const installed = process.env.REM_TEST_SNO_CLI || join(homedir(), '.local', 'bin', 'sno');
+  if (!process.env.REM_SELFTEST && !existsSync(installed)) {
+    t.skip(`no installed sno at ${installed}; arm check skipped`);
+    return;
+  }
   // a short, unique label (never the real `rem-reflect`): `sno heartbeat --list` truncates the label
   // column to ~20 chars, so a long label would never match its own listing.
   const label = `q19-${process.pid}`;

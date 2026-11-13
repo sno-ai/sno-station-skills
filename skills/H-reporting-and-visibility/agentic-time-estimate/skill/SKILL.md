@@ -14,7 +14,7 @@ requires:
 
 Before running the scripts below, set `AGENTIC_TIME_ESTIMATE_SKILL_DIR` to the absolute path of this skill's directory (the folder that holds this `SKILL.md`) in the same shell command.
 
-**Prerequisites.** Linux with procps `ps` (with the `etimes` column) and `pgrep`, plus the `sno report-time` command from Sno Station; `sno report-time --pid` also needs `/proc` and GNU `date`. `time-left` stops with one clear message when they are missing.
+**Prerequisites.** `ps` (with the `etime` column) and `pgrep`, on Linux or macOS, plus the `sno report-time` command from Sno Station; `sno report-time --pid` also needs `/proc` and GNU `date`. `time-left` stops with one clear message when they are missing.
 
 "Owner" below means whoever owns the work and reads the answer, usually the user. A "journey" is one piece of delegated work from request to close. A "route card" is the record that dispatched it, and the "routing ledger" is a project file with one row per journey (the `pl` skill writes both when it is installed); every rule below that mentions them applies only when the project keeps them, and is skipped otherwise. A ledger's `closed` event and its fields (`anchor_key`, `actual_body_h`, `actual_process_h`, `calibration_note`) are defined by the `pl` skill; without a ledger, still emit `anchor_key` in the estimate, so a later close can copy it.
 

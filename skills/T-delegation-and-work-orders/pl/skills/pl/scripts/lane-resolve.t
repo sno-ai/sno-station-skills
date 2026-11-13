@@ -35,7 +35,7 @@ check() { # $1 label, rest: command
 # and one row with a placeholder address.
 reg="$root/pl-registry.tsv"
 SNO_PL_REGISTRY="$reg" "$CLAIM" open setup >/dev/null
-sed -i '2,$d' "$reg"
+sed -i.bak '2,$d' "$reg" && rm -f -- "$reg.bak"
 {
   printf 'solo\tall\tpl.solo@host1\tsolo\tcodex\tcos/solo\tRUN\t-\n'
   printf 'multi\ta\tpl.multi@host1\tmulti\tcodex\tcos/first\tRUN\t-\n'
@@ -48,7 +48,7 @@ sed -i '2,$d' "$reg"
   printf 'sweep\told\tpl.sweep-old@host1\tsweep\tclaw\tcos/other\tRUN\tOld lane.\n'
   printf 'sweep\tcurrent\tpl.sweep-current@host1\tsweep\tclaude\tcos/sweep\tRUN\tCurrent lane.\n'
 } >> "$reg"
-sed -i "s/@host1/@$host/g" "$reg"
+sed -i.bak "s/@host1/@$host/g" "$reg" && rm -f -- "$reg.bak"
 export PL_REGISTRY="$reg"
 
 lease_now="$(date +%s)"
@@ -56,7 +56,9 @@ lease_old=$((lease_now - 86401))
 lease_fresh=$((lease_now - 60))
 sno reach init --as "pl.sweep-old@$host" --name Old >/dev/null
 sno reach init --as "pl.sweep-current@$host" --name Current >/dev/null
-jq --arg updated "$(date -u -d "@$lease_old" +%Y-%m-%dT%H:%M:%SZ)" \
+# GNU date reads "@N"; BSD date (macOS) reads -r N.
+jq --arg updated "$(date -u -d "@$lease_old" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null ||
+                    date -u -r "$lease_old" +%Y-%m-%dT%H:%M:%SZ)" \
   '.updated=$updated' "$SNO_REACH_ROOT/pl.sweep-old@$host/seat.json" \
   >"$root/old-seat.json"
 mv "$root/old-seat.json" "$SNO_REACH_ROOT/pl.sweep-old@$host/seat.json"

@@ -10,12 +10,17 @@ trap 'rm -rf -- "$root"' EXIT
 count=0
 ok() { count=$((count + 1)); printf 'ok %s - %s\n' "$count" "$1"; }
 fail() { printf 'not ok %s - %s\n' "$((count + 1))" "$1"; [[ -s "$root/out" ]] && sed 's/^/# out: /' "$root/out"; [[ -s "$root/err" ]] && sed 's/^/# err: /' "$root/err"; exit 1; }
-run() { local status=0; PATH="$root/bin:/usr/bin:/bin" HOME="$root/home" SNO_REACH_ADDR="${SNO_REACH_ADDR-me.main@box}" "$command_path" "$@" >"$root/out" 2>"$root/err" || status=$?; printf '%s' "$status"; }
+run() { local status=0; PATH="$root/bin:$root/sys:/usr/bin:/bin" HOME="$root/home" SNO_REACH_ADDR="${SNO_REACH_ADDR-me.main@box}" "$command_path" "$@" >"$root/out" 2>"$root/err" || status=$?; printf '%s' "$status"; }
 has() { grep -Eq -- "$1" "$root/out"; }
 
-mkdir -p "$root/bin" "$root/home"
+mkdir -p "$root/bin" "$root/home" "$root/sys"
+# The fixture PATH is /usr/bin:/bin plus stand-ins. medic needs a bash 4+ and the real jq, tmux, git and timeout;
+# Linux has them there, while on macOS /bin/bash is 3.2 and the others may live elsewhere, so link those in.
+ln -s "$BASH" "$root/sys/bash"
+for t in jq tmux git timeout; do [[ -x "/usr/bin/$t" || -x "/bin/$t" ]] || ln -s "$(command -v "$t")" "$root/sys/$t"; done
 stub() { printf '#!/usr/bin/env bash\n%s\n' "$2" >"$root/bin/$1"; chmod +x "$root/bin/$1"; }
-make_sno() { stub sno '[[ ! -e "$FX/broken-$1" ]] || exit 3
+make_sno() { stub sno "FX=$root/fx"'
+[[ ! -e "$FX/broken-$1" ]] || exit 3
 case "$1 $2" in
   "doctor --json") cat "$FX/doctor.json" ;;
   "reach seats") cat "$FX/seats.jsonl" ;;
@@ -24,8 +29,7 @@ case "$1 $2" in
   "subscription-quota-check --vendor") cat "$FX/quota-$3"; exit "$(cat "$FX/quota-$3.exit" 2>/dev/null || echo 0)" ;;
   "heartbeat --help"|"subscription-quota-check --help"|"deliver-proof --help"|"handoff-checkpoint --help"|"rotate-agent-resume --help"|"rem-reflect --help") exit 0 ;;
   *) exit 64 ;;
-esac'
-  sed -i "2i FX=$root/fx" "$root/bin/sno"; }
+esac'; }
 make_sno
 for c in claude codex; do stub "$c" 'exit 0'; done
 
@@ -91,15 +95,15 @@ good_setup; touch "$root/fx/broken-rem-reflect" "$root/fx/broken-deliver-proof"
 run run >/dev/null; expect_line WARN commands 'deliver-proof' 'names the command that does not run'; expect_line WARN commands 'rem-reflect' 'names the other command that does not run'
 ok 'WARN names each missing skill and each command that does not run'
 
-good_setup; sed -i 's/"claude configured","result":"ok"/"claude configured","result":"missing"/' "$root/fx/doctor.json"
+good_setup; sed -i.bak 's/"claude configured","result":"ok"/"claude configured","result":"missing"/' "$root/fx/doctor.json"
 run run >/dev/null; expect_line WARN hooks 'claude' 'hooks not configured for claude'
-good_setup; sed -i 's/"reach","result":"ok","detail":""/"reach","result":"fail","detail":"run: sno update"/' "$root/fx/doctor.json"
+good_setup; sed -i.bak 's/"reach","result":"ok","detail":""/"reach","result":"fail","detail":"run: sno update"/' "$root/fx/doctor.json"
 status="$(run run)"; [[ "$status" == 1 ]] && grep -Eq '^FAIL reach: .* -> run: sno update$' "$root/out" || fail 'sno doctor reach failure is FAIL reach with its own fix, exit 1'
-good_setup; sed -i 's#"handoff/SKILL.md","result":"ok"#"handoff/SKILL.md","result":"fail"#' "$root/fx/doctor.json"
+good_setup; sed -i.bak 's#"handoff/SKILL.md","result":"ok"#"handoff/SKILL.md","result":"fail"#' "$root/fx/doctor.json"
 run run >/dev/null; expect_line WARN skill-files 'handoff/SKILL.md' 'names the skill file that failed'
-good_setup; sed -i 's/"codex trust","result":"ok"/"codex trust","result":"changed"/' "$root/fx/doctor.json"
+good_setup; sed -i.bak 's/"codex trust","result":"ok"/"codex trust","result":"changed"/' "$root/fx/doctor.json"
 run run >/dev/null; expect_line WARN hooks 'codex trust is changed' 'a codex hook whose trust changed is named'
-good_setup; rm "$root/bin/codex"; sed -i 's/"codex trust","result":"ok"/"codex trust","result":"changed"/; s/"codex configured","result":"ok"/"codex configured","result":"missing"/' "$root/fx/doctor.json"
+good_setup; rm "$root/bin/codex"; sed -i.bak 's/"codex trust","result":"ok"/"codex trust","result":"changed"/; s/"codex configured","result":"ok"/"codex configured","result":"missing"/' "$root/fx/doctor.json"
 status="$(run run)"; ! grep -q 'codex' "$root/out" || fail 'a vendor that is not installed is not checked for hooks, skills or quota'
 [[ "$status" == 0 ]] || fail 'with only claude installed and healthy the run exits 0'
 good_setup; printf '{"error":"doctor failed halfway"}\n' >"$root/fx/doctor.json"

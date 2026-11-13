@@ -386,7 +386,7 @@ todo add --name 'Hand edited block' --prd 'ai-doc/PRD/x.md' --state queued \
 legal_hand_edit_is_adopted() {
     # A hand edit is not an offence; leaving it unreconciled is. A row that still
     # parses is adopted and re-stamped rather than destroyed.
-    sed -i 's/why-now: first pass/why-now: second pass/' "$repo/TODO.md"
+    sed -i.bak 's/why-now: first pass/why-now: second pass/' "$repo/TODO.md" && rm -f -- "$repo/TODO.md.bak"
     todo set b-0001 --callsign onyx >/dev/null 2>&1 || return 1
     grep -q 'why-now: second pass' "$repo/TODO.md" && grep -q 'callsign: onyx' "$repo/TODO.md"
 }
@@ -394,7 +394,7 @@ check "a legal hand edit survives the next write and is re-stamped" legal_hand_e
 
 check "check reports a hand edit before the next write" bash -c '
     r="'"$repo"'"
-    sed -i "s/why-now: second pass/why-now: third pass/" "$r/TODO.md"
+    sed -i.bak "s/why-now: second pass/why-now: third pass/" "$r/TODO.md" && rm -f -- "$r/TODO.md.bak"
     "'"$TODO"'" check --repo "$r" 2>&1 | grep -q "hand-edited since the last write"'
 
 unparseable_row_blocks_the_write() {
@@ -483,7 +483,7 @@ hand_deletion_stops_the_next_write() {
     # those loses owed work. Without the id list, deleting a row by hand and running
     # any ordinary command made the deletion permanent with every later check green.
     local before out
-    sed -i '/Row that gets deleted/d' "$repo/TODO.md"
+    sed -i.bak '/Row that gets deleted/d' "$repo/TODO.md" && rm -f -- "$repo/TODO.md.bak"
     before="$(cat "$repo/TODO.md")"
     out="$(todo set b-0002 --callsign vega 2>&1)" && return 1
     [[ "$out" == *"b-0001"* ]] && test "$(cat "$repo/TODO.md")" = "$before"

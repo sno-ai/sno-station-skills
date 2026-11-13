@@ -45,7 +45,9 @@ Use its returned path as `<LOG>` in both calls. Never reuse a previous run's log
 Copy one of these two blocks and set the label, interval and paths. Both calls are required.
 When armed, `sno heartbeat` prints its process id and a suggested reader command of the form
 `tail --pid=<PID> -F -n0 <log>`. Put that process id in `<PID>` below; the reader here uses
-`-n +1` instead of `-n0`, for the reason given under "The one rule".
+`-n +1` instead of `-n0`, for the reason given under "The one rule". On macOS the system `tail`
+has no `--pid` and the reader dies at once with no tick delivered: when the printed command says
+`gtail`, write `gtail` wherever the blocks below say `tail`.
 
 **Cursor (IDE and CLI) has no `Monitor`.** There `sno heartbeat` itself delivers each tick into the Cursor
 conversation that armed it, and when armed from Cursor it prints the reader instruction to follow in place of

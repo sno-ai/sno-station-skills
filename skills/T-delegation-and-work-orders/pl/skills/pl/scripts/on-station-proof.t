@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# The launcher needs systemd-run before it renders the card, so off Linux it stops at its
+# dependency check.
+if [[ "$(uname -s)" != Linux ]]; then
+    printf 'ok # SKIP (Linux only): absent fence is reported as absent in the generated Reach card\n'
+    exit 0
+fi
+
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cos_claim=""
 for d in "$script_dir/../../../../cos/skills/cos/scripts" "$script_dir/../../cos/scripts"; do

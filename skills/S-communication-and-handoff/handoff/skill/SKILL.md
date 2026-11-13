@@ -170,8 +170,8 @@ does not make a readable task unusable. Never choose a different "last session".
 
 Keep Next accurate before taking it; run the command at real task boundaries and before
 an orderly stop or compaction, then update Done and Next. An agent that does this can be
-replaced at any moment, including by a receiver that never meets it. Prerequisites: bash 4+, GNU
-coreutils and git; on macOS install `bash` and `coreutils` from Homebrew and put them first on PATH.
+replaced at any moment, including by a receiver that never meets it. Prerequisites: bash 4+ and
+git, plus python3 without GNU coreutils (macOS); on macOS install `bash` from Homebrew and put it first on PATH.
 
 `sno handoff-checkpoint --verify <file>` compares the record with the checkout it names. It prints `MATCH`
 (exit 0), or one `DRIFT` line per difference (exit 1): `head moved`, `branch`, `new:`, `changed:`,

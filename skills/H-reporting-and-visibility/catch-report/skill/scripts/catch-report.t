@@ -114,6 +114,10 @@ printf '%s\n' "$v" >"$out"
 echo "noise from the codex tool"
 SH
 chmod +x "$root/bin/claude" "$root/bin/codex"; export FAKE_ROOT="$root"
+# The tests below that keep the model CLIs off a /usr/bin:/bin PATH still need a bash 4+ and the jq and timeout
+# the command runs. Linux has them there; on macOS /bin/bash is 3.2 and the others may live elsewhere.
+mkdir -p "$root/sys"; ln -s "$BASH" "$root/sys/bash"
+for t in jq timeout; do [[ -x "/usr/bin/$t" || -x "/bin/$t" ]] || ln -s "$(command -v "$t")" "$root/sys/$t"; done
 
 mkdir -p "$root/claude/proj" "$root/codex/2026/09/30"
 cl() { jq -cn --arg role "$1" --arg kind "$2" --arg text "$3" --arg ts "${4:-}" '{type: $role, message: {role: $role, content: [ {type: $kind, ($kind | if . == "tool_result" then "content" elif . == "thinking" then "thinking" else "text" end): $text} ]}} + (if $ts != "" then {timestamp: $ts} else {} end)'; }
@@ -149,7 +153,7 @@ cx() { jq -cn --arg role "$1" --arg kind "$2" --arg text "$3" '{type: "response_
   for i in 1 2 3 4 5 6 7 8; do jq -cn --arg i "$i" '{type: "response_item", payload: {type: "function_call_output", output: ("listing " + $i)}}'; done
   cx assistant output_text 'Switching to the other file name now.'
 } >"$root/codex/2026/09/30/rollout-s2.jsonl"
-mkdir -p "$root/claude/old"; cl assistant text 'My mistake, I broke the build long ago.' >"$root/claude/old/ancient.jsonl"; touch -d '2026-09-01' "$root/claude/old/ancient.jsonl"
+mkdir -p "$root/claude/old"; cl assistant text 'My mistake, I broke the build long ago.' >"$root/claude/old/ancient.jsonl"; touch -t 202609010000 "$root/claude/old/ancient.jsonl"
 
 srun() { run self --since 2026-09-20 --claude-dir "$root/claude" --codex-dir "$root/codex" --stats "$root/stats.jsonl" "$@"; }
 
@@ -168,7 +172,7 @@ has 'Side by side: mutual review found 5 problems that had to be fixed now; agen
 ok 'self counts what the model judged: 6 found by the agent, 1 pointed out, side by side with mutual review'
 
 grep -q -- '--no-session-persistence' "$root/claude-calls" && grep -q -- '--ephemeral' "$root/codex-calls" || fail 'the model calls leave no session behind (--no-session-persistence, --ephemeral)'
-[[ "$(wc -l <"$root/claude-calls")" == 4 && "$(wc -l <"$root/codex-calls")" == 3 ]] || fail 'claude moments go to claude, codex moments to codex, once each'
+(( $(wc -l <"$root/claude-calls") == 4 && $(wc -l <"$root/codex-calls") == 3 )) || fail 'claude moments go to claude, codex moments to codex, once each'
 grep -q 'routine progress' "$root/last-claude-prompt" && grep -q 'and is now fixing or redoing it' "$root/last-claude-prompt" || fail 'the prompt says SELF needs an earlier mistake being corrected, and that routine progress is NONE'
 ok 'each agent judges its own conversations, without saving a new session'
 
@@ -212,7 +216,7 @@ IFS='|' read -r judge_home judge_cwd judge_share <"$root/cursor-homes"
   fail 'cursor-agent runs with a throwaway home linking only its install, from an empty folder, and the home is gone afterwards'
 ! kill -0 "$(head -1 "$root/cursor-children")" 2>/dev/null || fail 'a process cursor-agent leaves running is killed with its group'
 mkdir -p "$root/ide-only"; printf '#!/usr/bin/env bash\nexit 0\n' >"$root/ide-only/cursor"; chmod +x "$root/ide-only/cursor"
-status="$(PATH="$root/ide-only:/usr/bin:/bin" "$command_path" self --since 2026-09-20 --cursor-dir "$root/cursor" --agent cursor --stats "$root/stats.jsonl" >"$root/out" 2>"$root/err"; echo $?)"
+status="$(PATH="$root/ide-only:$root/sys:/usr/bin:/bin" "$command_path" self --since 2026-09-20 --cursor-dir "$root/cursor" --agent cursor --stats "$root/stats.jsonl" >"$root/out" 2>"$root/err"; echo $?)"
 grep -q '^not judged: cursor -> the cursor-agent command is not installed' "$root/out" || fail 'the IDE launcher alone is not the Cursor CLI: the missing cursor-agent is named'
 ok '--agent cursor reads Cursor transcripts and judges them with cursor-agent'
 
@@ -229,7 +233,7 @@ status="$(FAKE_MODEL_FAIL=1 srun)"
 has 'No moment could be judged, so nothing is counted.' && has 'the self-check number is not available' && ! has 'Estimate' || fail 'when nothing could be judged the report says so instead of printing zero estimates'
 [[ "$status" == 0 ]] && has '  not an error, or could not be judged: 7' && has 'could not be judged:' || fail 'a model that fails leaves the moments unjudged, counted, and the report still prints'
 rm "$root/bin/claude"
-status="$(PATH="/usr/bin:/bin:$root/bin" srun)"
+status="$(PATH="$root/sys:/usr/bin:/bin:$root/bin" srun)"
 grep -Eq '^not judged: claude -> ' "$root/out" && has '  found by the agent itself: 3' || fail 'a missing claude command is named; the codex moment is still judged'
 ok 'a failing or missing model is named and never stops the report'
 
@@ -312,7 +316,7 @@ status="$(FAKE_MODEL_FAIL=1 brun)"
 ok 'brief: without a self-check number the headline is honest about it'
 
 # the period before: same-length window, dates relative to today
-rel() { date -u -d "$1 days ago" +%Y-%m-%dT%H:%M:%S+00:00; }
+rel() { date -u -d "$1 days ago" +%Y-%m-%dT%H:%M:%S+00:00 2>/dev/null || date -u -v-"$1"d +%Y-%m-%dT%H:%M:%S+00:00; }
 {
   printf '{"ts":"%s","event":"end","run":"a1","targets":["x.ts"],"report":"/r/x.md","verdict":"needs-attention","fix_now":1,"high":1,"medium":0}\n' "$(rel 3)"
   printf '{"ts":"%s","event":"end","run":"a2","targets":["y.ts"],"report":"/r/y.md","verdict":"needs-attention","fix_now":2,"high":1,"medium":0}\n' "$(rel 5)"

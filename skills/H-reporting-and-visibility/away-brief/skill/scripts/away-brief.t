@@ -16,6 +16,14 @@ fail() { printf 'not ok %s - %s\n' "$((count + 1))" "$1"; [[ -s "$root/out" ]] &
 run() { local status=0; PATH="$root/bin:$PATH" XDG_STATE_HOME="$root/state" SNO_REACH_ADDR= "$command_path" "$@" >"$root/out" 2>"$root/err" || status=$?; printf '%s' "$status"; }
 has() { grep -Fq -- "$1" "$root/out"; }
 section() { awk -v h="## $1" '$0 == h { on = 1; next } /^## / { on = 0 } on' "$root/out"; }
+# GNU and BSD alike: date output for <seconds> ago, an in-place sed, and lines put under "## Next".
+ago() { local e=$(( $(date -u +%s) - $1 )); shift; date -d "@$e" "$@" 2>/dev/null || date -r "$e" "$@"; }
+sed_i() { sed "$2" "$1" >"$1.new" && mv -- "$1.new" "$1"; }
+add_next() {
+    local f="$1" lines; shift
+    printf -v lines '%s\n' "$@"
+    NEXT="${lines%$'\n'}" awk '{ print } $0 == "## Next" { print ENVIRON["NEXT"] }' "$f" >"$f.new" && mv -- "$f.new" "$f"
+}
 
 # ---- stand-in for the sno subcommands reach inbox, heartbeat and subscription-quota-check
 export REAL_SNO="$(command -v sno)"
@@ -46,7 +54,7 @@ repo="$root/proj"
 mkdir -p "$repo/docs"
 git -C "$repo" init -q -b main
 gc() { git -C "$repo" -c user.name=Dev -c user.email=dev@example.invalid commit -q --allow-empty -m "$1"; }
-old="$(date -d '3 days ago' -R)"
+old="$(ago 259200 -u -R)"
 GIT_AUTHOR_DATE="$old" GIT_COMMITTER_DATE="$old" gc 'old work from days ago'
 gc 'add login page'
 gc 'fix login redirect'
@@ -82,14 +90,14 @@ charter "$repo/docs/long.md" delivered 'A very long charter title that goes on a
 (cd "$repo/docs" && sno deliver-proof run long.md 1 -- true >/dev/null)
 charter "$repo/docs/ancient.md" delivered 'Delivered long ago' $'1. it worked'
 (cd "$repo/docs" && sno deliver-proof run ancient.md 1 -- true >/dev/null)
-touch -d '5 days ago' "$repo/docs/ancient.md"
+touch -t "$(ago 432000 +%Y%m%d%H%M.%S)" "$repo/docs/ancient.md"
 
 # ---- real progress records
 for r in quiet running finished; do (cd "$repo" && sno handoff-checkpoint "$root/$r.state.md" >/dev/null); done
-sed -i 's/^## Next$/## Next\n1. copy the old rows\n2. rebuild the reports/' "$root/quiet.state.md"
-sed -i 's/^by: .*/by: worker.one@host/; s/^updated: .*/updated: '"$(date -u -d '5 hours ago' +%Y-%m-%dT%H:%M:%SZ)"'/' "$root/quiet.state.md"
-sed -i 's/^## Next$/## Next\n1. write the summary/' "$root/running.state.md"
-sed -i 's/^## Next$/## Next\nNone./' "$root/finished.state.md"
+add_next "$root/quiet.state.md" '1. copy the old rows' '2. rebuild the reports'
+sed_i "$root/quiet.state.md" 's/^by: .*/by: worker.one@host/; s/^updated: .*/updated: '"$(ago 18000 -u +%Y-%m-%dT%H:%M:%SZ)"'/'
+add_next "$root/running.state.md" '1. write the summary'
+add_next "$root/finished.state.md" 'None.'
 mkdir -p "$repo/notes"; cp "$root/"{quiet,running,finished}.state.md "$repo/notes/"
 
 # ---- Reach cards: one question, one decision, one plain status
@@ -183,7 +191,7 @@ ok 'a run changes nothing but its own reading store'
 # a long Done list must not push Needs you and Spend off the page
 for n in $(seq 1 40); do
     (cd "$repo" && sno handoff-checkpoint "$repo/notes/many$n.state.md" >/dev/null)
-    sed -i 's/^## Next$/## Next\nNone./' "$repo/notes/many$n.state.md"
+    add_next "$repo/notes/many$n.state.md" 'None.'
 done
 quota 25
 status="$(run run --since 12h --repo "$repo" --as me@host)"
@@ -239,7 +247,7 @@ ok 'a charter marked delivered with a failing proof goes under Stuck, not Done'
 # mark stores a reading and prints one line
 rm -rf "$root/state/away-brief"
 status="$(run mark)"
-[[ "$status" == 0 && "$(wc -l <"$root/out")" == 1 && "$(wc -l <"$root/state/away-brief/readings.jsonl")" == 2 ]] || fail 'mark stores one reading per vendor and prints one line'
+[[ "$status" == 0 && "$(wc -l <"$root/out")" -eq 1 && "$(wc -l <"$root/state/away-brief/readings.jsonl")" -eq 2 ]] || fail 'mark stores one reading per vendor and prints one line'
 ok 'mark stores a reading and prints one line'
 
 printf '1..%s\n' "$count"

@@ -15,9 +15,9 @@ is. Read the whole charter and the existing work first. The owner (whoever owns 
 often the user) can override this skill and any plan an agent wrote. Any kind of project uses
 it: for code and tests also read `references/proof.md`.
 
-Prerequisites: `sno deliver-proof` needs bash 4+ and GNU coreutils (Linux) and prints one message
-and stops when they are missing; its selftest also needs python3. On macOS, install bash 4+ and
-GNU coreutils (for example with Homebrew) and put them first on PATH. If `sno deliver-proof` is not
+Prerequisites: `sno deliver-proof` needs bash 4+ and prints one message and stops when it is
+missing; without GNU coreutils (macOS) it also needs python3, and its selftest needs python3. On
+macOS, install bash 4+ (for example with Homebrew) and put it first on PATH. If `sno deliver-proof` is not
 available, run `scripts/deliver-proof` from this skill's folder instead.
 
 ## Keep the work useful

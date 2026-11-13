@@ -4,13 +4,15 @@ set -Eeuo pipefail
 unset CLAUDE_SESSION_ID CODEX_THREAD_ID
 
 command_path="$(realpath -- "${1:-$(dirname -- "${BASH_SOURCE[0]}")/handoff-checkpoint}")"
-root="$(mktemp -d)"
+# Physical path: git reports the checkout with symlinks resolved (macOS /var is /private/var).
+root="$(cd -- "$(mktemp -d)" && pwd -P)"
 trap 'rm -rf -- "$root"' EXIT
 count=0
 
 ok() { count=$((count + 1)); printf 'ok %s - %s\n' "$count" "$1"; }
 fail() { printf 'not ok %s - %s\n' "$((count + 1))" "$1"; [[ -s "$root/err" ]] && sed 's/^/# /' "$root/err"; exit 1; }
 run() { local status=0; "$command_path" "$@" >"$root/out" 2>"$root/err" || status=$?; printf '%s' "$status"; }
+file_mode() { stat -c %a -- "$1" 2>/dev/null || stat -f %Lp -- "$1"; }
 git_() { git -C "$repo" -c user.name=Test -c user.email=test@example.invalid "$@"; }
 new_repo() {
     repo="$root/$1"
@@ -26,8 +28,10 @@ plain_brief() {
     record="$root/plain-brief.md"
     printf '# Current task\n\n## Next\nCompute the sum from input.txt.\n\n## Known failure\nRead missing.txt: no such file.\n' >"$record"
     cp "$record" "$root/plain-before.md"
+    chmod 640 "$record"
     status="$(cd -- "$repo" && run "$record")"
     [[ "$status" == 0 ]] && grep -qx '<!-- machine-record:start -->' "$record" || fail 'readable task without machine markers can be refreshed'
+    [[ "$(file_mode "$record")" == 640 ]] || fail 'adding machine information kept the file mode'
     sed '1,/<!-- machine-record:end -->/d' "$record" | tail -n +2 >"$root/plain-after.md"
     cmp -s "$root/plain-before.md" "$root/plain-after.md" || fail 'adding machine information changed the readable task'
     ok 'existing readable brief receives machine information without losing any original byte'
@@ -75,8 +79,10 @@ outside() { sed '/<!-- machine-record:start -->/,/<!-- machine-record:end -->/d'
 outside "$record" >"$root/outside-before"
 git_ add -A
 git_ commit -q -m 'second commit'
+chmod 640 "$record"
 status="$(cd -- "$repo" && run "$record")"
 [[ "$status" == 0 ]] || fail "refresh exits 0 (got $status)"
+[[ "$(file_mode "$record")" == 640 ]] || fail 'refresh keeps the file mode'
 grep -q '^checkpoint: 2$' "$record" || fail 'checkpoint number goes up by one'
 grep -Eq '^head: [0-9a-f]{7,} second commit$' "$record" || fail 'refresh records the new head'
 cmp -s "$root/outside-before" <(outside "$record") || fail 'text outside the record is unchanged byte for byte'
@@ -122,12 +128,12 @@ ok 'verify names a new commit, an edit, a new file and a deleted file'
 
 # unusable input
 status="$(run --verify "$root/missing.md")"
-[[ "$status" == 2 && "$(wc -l <"$root/err")" == 1 ]] || fail 'a missing record exits 2 with one line'
+[[ "$status" == 2 && "$(wc -l <"$root/err")" -eq 1 ]] || fail 'a missing record exits 2 with one line'
 printf 'no markers here\n' >"$root/plain.md"
 status="$(run --verify "$root/plain.md")"
-[[ "$status" == 2 && "$(wc -l <"$root/err")" == 1 ]] || fail 'a file without the record markers exits 2 with one line'
+[[ "$status" == 2 && "$(wc -l <"$root/err")" -eq 1 ]] || fail 'a file without the record markers exits 2 with one line'
 status="$(cd -- "$root/empty" && run "$root/nogit.md")"
-[[ "$status" == 2 && "$(wc -l <"$root/err")" == 1 && ! -e "$root/nogit.md" ]] || fail 'outside a git work tree it exits 2 and writes nothing'
+[[ "$status" == 2 && "$(wc -l <"$root/err")" -eq 1 && ! -e "$root/nogit.md" ]] || fail 'outside a git work tree it exits 2 and writes nothing'
 ok 'unusable input exits 2 with one line'
 
 # Default session location and exact vendor identity share the existing record format.

@@ -8,6 +8,7 @@ count=0
 
 ok() { count=$((count + 1)); printf 'ok %s - %s\n' "$count" "$1"; }
 fail() { printf 'not ok %s - %s\n' "$((count + 1))" "$1"; exit 1; }
+file_mode() { stat -c %a -- "$1" 2>/dev/null || stat -f %Lp -- "$1"; }
 charter() {
     mkdir -p -- "$root/$1"
     printf '# Work\n\n## Success checks\n1. Run command\n2. Inspect evidence\n\n## Report\nKeep this line.\n' >"$root/$1/work.md"
@@ -24,7 +25,7 @@ cat >"$root/bin/date" <<'SH'
 #!/bin/sh
 printf '20260929T120000Z\n'
 SH
-chmod +x -- "$root/bin/date"
+chmod +x "$root/bin/date"
 status="$(PATH="$root/bin:$PATH" run run "$root/collision/work.md" 1 -- bash -c 'printf "first output\n"; exit 7')"
 [[ "$status" == 7 ]] || fail 'first same-second run status'
 status="$(PATH="$root/bin:$PATH" run run "$root/collision/work.md" 1 -- bash -c 'printf "second output\n"')"
@@ -51,11 +52,12 @@ rel="${log#"$root/pass/"}"
 [[ "$rel" =~ ^work\.proof/1-[0-9]{8}T[0-9]{6}Z\.log$ ]] || fail 'literal UTC log path'
 grep -Fq '| 1 | pass | run: bash -c printf "visible output\n" | 0 | work.proof/1-' "$root/pass/work.md" || fail 'literal run row values'
 grep -Eq '^\| 1 \| pass \| .* \| 0 \| work\.proof/1-[0-9]{8}T[0-9]{6}Z\.log \| [0-9]{8}T[0-9]{6}Z \|$' "$root/pass/work.md" || fail 'literal run row format'
-cmp -s -n "$(wc -c <"$root/pass/before")" -- "$root/pass/before" "$root/pass/work.md" || fail 'all original bytes remain unchanged'
+head -c "$(( $(wc -c <"$root/pass/before") ))" -- "$root/pass/work.md" | cmp -s -- "$root/pass/before" - || fail 'all original bytes remain unchanged'
 ok 'successful run records only its proof'
 
 charter existing
-sed -i '/^## Report$/i ## Proof\n\n| check | result | how | exit | log | at (UTC) |\n| --- | --- | --- | --- | --- | --- |\n' "$root/existing/work.md"
+awk '$0 == "## Report" { print "## Proof\n\n| check | result | how | exit | log | at (UTC) |\n| --- | --- | --- | --- | --- | --- |\n" } { print }' "$root/existing/work.md" >"$root/existing/work.new"
+mv -- "$root/existing/work.new" "$root/existing/work.md"
 sed '/^## Proof$/,/^## Report$/{ /^## Report$/!d; }' "$root/existing/work.md" >"$root/existing/before"
 printf 'seen\n' >"$root/existing/evidence.txt"
 [[ "$(run see "$root/existing/work.md" 1 "$root/existing/evidence.txt" observed)" == 0 ]] || fail 'existing Proof append'
@@ -142,7 +144,8 @@ grep -Fq 'check 1: NOT proven (log or evidence missing)' "$root/out" || fail 'de
 ok 'deleted command log loses proof'
 
 charter no_checks
-sed -i '/^1\. Run command$/d; /^2\. Inspect evidence$/d' "$root/no_checks/work.md"
+sed '/^1\. Run command$/d; /^2\. Inspect evidence$/d' "$root/no_checks/work.md" >"$root/no_checks/work.new"
+mv -- "$root/no_checks/work.new" "$root/no_checks/work.md"
 cp -- "$root/no_checks/work.md" "$root/no_checks/before"
 [[ "$(run check "$root/no_checks/work.md")" == 2 ]] || fail 'no checks check status'
 [[ "$(run run "$root/no_checks/work.md" 1 -- true)" == 2 ]] || fail 'no checks run status'
@@ -182,11 +185,11 @@ printf '# Work\n\n## Success checks\n### Slice A\n1. A one\n2. A two\n### Slice 
 ok 'check numbers must be unique across slices'
 
 charter mode
-chmod 640 -- "$root/mode/work.md"
+chmod 640 "$root/mode/work.md"
 [[ "$(run run "$root/mode/work.md" 1 -- true)" == 0 ]] || fail 'mode run'
-[[ "$(stat -c %a -- "$root/mode/work.md")" == 640 ]] || fail 'run changed charter mode'
+[[ "$(file_mode "$root/mode/work.md")" == 640 ]] || fail 'run changed charter mode'
 [[ "$(run see "$root/mode/work.md" 2 "$root/pass/second.txt" observed)" == 0 ]] || fail 'mode see'
-[[ "$(stat -c %a -- "$root/mode/work.md")" == 640 ]] || fail 'see changed charter mode'
+[[ "$(file_mode "$root/mode/work.md")" == 640 ]] || fail 'see changed charter mode'
 ok 'charter file mode survives a proof row'
 
 charter relative
@@ -195,15 +198,17 @@ printf 'relative evidence\n' >"$root/relative/evidence.txt"
 grep -Eq '^\| 2 \| pass \| see: observed \| 0 \| evidence\.txt \|' "$root/relative/work.md" || fail 'evidence path read from cwd, recorded relative to charter'
 ok 'see reads the evidence path from the caller directory'
 
-mkdir -p -- "$root/notgnu"
-printf '#!/bin/sh\necho "realpath: illegal option -- -" >&2\nexit 1\n' >"$root/notgnu/realpath"
-chmod +x -- "$root/notgnu/realpath"
-charter needgnu
-cp -- "$root/needgnu/work.md" "$root/needgnu/before"
-status="$(PATH="$root/notgnu:$PATH" run run "$root/needgnu/work.md" 1 -- true)"
-[[ "$status" == 2 ]] || fail 'non-GNU tools status'
-grep -Fq 'GNU coreutils' "$root/err" || fail 'non-GNU tools message'
-[[ ! -e "$root/needgnu/work.proof" ]] || fail 'non-GNU tools made a directory'
-ok 'non-GNU tools stop with one clear message'
+# A BSD realpath (macOS) has no -m or --relative-to; on Linux this stand-in forces the same path.
+mkdir -p -- "$root/bsd"
+# shellcheck disable=SC2016  # the $ text is the stand-in's own shell code
+printf '#!/bin/sh\nfor a in "$@"; do case "$a" in --) ;; -*) echo "realpath: illegal option -- ${a#-}" >&2; exit 1 ;; esac; done\nexec %s "$@"\n' "$(command -v realpath)" >"$root/bsd/realpath"
+chmod +x "$root/bsd/realpath"
+charter bsdpath
+[[ "$(PATH="$root/bsd:$PATH" run run "$root/bsdpath/work.md" 1 -- true)" == 0 ]] || fail 'run with a BSD realpath'
+status="$(cd -- "$root/bsdpath" && PATH="$root/bsd:$PATH" run see work.md 2 ../pass/second.txt observed)"
+[[ "$status" == 0 ]] || fail 'see with a BSD realpath'
+grep -Eq '^\| 2 \| pass \| see: observed \| 0 \| \.\./pass/second\.txt \|' "$root/bsdpath/work.md" || fail 'evidence outside the charter folder recorded as ../pass/second.txt'
+[[ "$(PATH="$root/bsd:$PATH" run check "$root/bsdpath/work.md")" == 0 ]] || fail 'check with a BSD realpath'
+ok 'a BSD realpath records the same relative evidence path'
 
 printf '1..%s\n' "$count"

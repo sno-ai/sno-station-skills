@@ -3,7 +3,7 @@
 ![Sno Station — Agents, assemble. Two heads are better than one, and smarter by morning.](https://raw.githubusercontent.com/sno-ai/sno-station/main/docs/images/hero-banner.png)
 
 [![license Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-97ca00.svg?labelColor=3b3b3b)](LICENSE)
-![38 skills in 29 units](https://img.shields.io/badge/skills-38%20in%2029%20units-2dd4bf.svg?labelColor=3b3b3b)
+![39 skills in 30 units](https://img.shields.io/badge/skills-39%20in%2030%20units-2dd4bf.svg?labelColor=3b3b3b)
 ![self-tested before every release](https://img.shields.io/badge/every%20release-self--tested-3b82f6.svg?labelColor=3b3b3b)
 ![agents Claude Code, Codex](https://img.shields.io/badge/agents-Claude%20Code%20%C2%B7%20Codex-f0a04b.svg?labelColor=3b3b3b)
 
@@ -19,7 +19,7 @@ Copy this prompt into your agent's chat:
 Install sno.ai from GitHub.
 ```
 
-This installs Sno Station and sets up all 38 skills, plus the programs they call,
+This installs Sno Station and sets up all 39 skills, plus the programs they call,
 for the supported agents it finds on your machine.
 
 Or paste this command into your terminal:
@@ -85,7 +85,7 @@ codex plugin marketplace add sno-ai/sno-station-skills
 codex plugin add sno-station@sno-ai
 ```
 
-`sno-station` holds all 38 skills; most of them call Sno Station programs, so install Sno Station too.
+`sno-station` holds all 39 skills; most of them call Sno Station programs, so install Sno Station too.
 For only the 7 skills that run without Sno Station, install `sno-station-standalone@sno-ai` instead.
 
 [Install](#install) · [What changes for you](#what-changes-for-you) · [Why these skills](#why-these-skills) · [The pain, and what fixes it](#the-pain-and-what-fixes-it) · [Stories from our own machine](#i-went-to-bed-it-changed-shifts) · [The skills](#the-skills) · [Built to be trusted](#built-to-be-trusted) · [For skill authors](#for-skill-authors) · [License](#license)
@@ -206,7 +206,7 @@ in all three had dropped to zero.
 
 ## The skills
 
-38 skills, shipped as 29 units, filed under six things a team has to be able to do. A unit is
+39 skills, shipped as 30 units, filed under six things a team has to be able to do. A unit is
 one skill or a small family that installs together. The full index with links is
 [skills/README.md](skills/README.md).
 
@@ -313,6 +313,25 @@ one skill or a small family that installs together. The full index with links is
 
 *Use it when:* you ask an agent to write or fix tests, fixtures or evals. It works on its own,
 without Sno Station.
+
+#### [cross-vendor-security-audit](skills/J-peer-review-and-audit/cross-vendor-security-audit/) — a security audit that rereads what it threw away
+
+- **Built on Cloudflare's security-audit skill,** used under its MIT license: the same
+  source-first audit, the same evidence bar, the same validators and report.
+- **One step added.** A long audit sets things aside: notes filed as "hardening, not a finding",
+  rejected leads, areas it never got to. Before the report, a model from the other vendor
+  reads that whole pile against the source, with read-only access, and anything it brings back
+  is validated again.
+- **Disagreements stay visible.** If validation rejects a revived item again, the report lists
+  it under "Reviewers disagree" with both reasons. You decide.
+- **Why the other vendor.** On two open-source projects with known, already-fixed
+  vulnerabilities, both bugs the first pass saw and set aside came back through this step, one
+  of them only when the reviewer came from the other vendor. Two projects make a story, not a
+  rate.
+
+*Use it when:* you want a full security audit of a codebase. With Sno Station it picks the
+other-vendor reviewer that still has quota; without it, it calls Codex from Claude Code or
+Claude Code from Codex, and says so when only one vendor was available.
 
 ### M · Build & Rollout
 

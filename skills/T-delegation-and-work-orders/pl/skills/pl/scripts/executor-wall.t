@@ -44,6 +44,20 @@ check 'the launcher injects the ownership marker at the runtime scope, not the t
        ! grep -q 'SNO_EXEC_SPAWN_ID=.*systemd-run --user --scope' "$launcher" &&
        grep -q 'systemd-run --user --scope.*env SNO_EXEC_SPAWN_ID=' "$launcher" && echo pass || echo fail)"
 
+# The wall needs systemd scopes and cgroups. Elsewhere it must refuse loudly rather than
+# exit as if a wall were armed, and the live cases below cannot run.
+if [[ "$(uname -s)" != Linux ]]; then
+    refusal_rc=0
+    refusal="$(bash "$wall" --spawn-id "off-linux-$$" --cleanup-now 2>&1)" || refusal_rc=$?
+    check 'off Linux the wall refuses with exit 69 and says why' \
+        "$([[ "$refusal_rc" == 69 && "$refusal" == *'needs Linux'*'no wall was armed'* ]] && echo pass || echo fail)" \
+        "exit $refusal_rc: $refusal"
+    case_number=$((case_number + 1))
+    printf 'ok %d # SKIP (Linux only): live wall cases (systemd scopes, cgroups, /proc environ)\n' "$case_number"
+    printf '1..%d\n' "$case_number"
+    exit "$fail"
+fi
+
 root="$(mktemp -d)"
 run_id="sno-wall-test-$$"
 session="$run_id"

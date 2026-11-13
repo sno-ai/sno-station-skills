@@ -266,7 +266,7 @@ check "with neither CLI installed the wrapper exits 2 with one clear message" ca
 cat > "$ROOT/bin/cursor-agent" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$@" > "$CURSOR_CAPTURE.args"
-printf '%s|%s|%s|%s\n' "$HOME" "$PWD" "$(readlink "$HOME/.local/share")" "$(cat "$HOME/.config/cursor/auth.json" 2>/dev/null)" > "$CURSOR_CAPTURE.env"
+printf '%s|%s|%s|%s|%s\n' "$HOME" "$PWD" "$(readlink "$HOME/.local/share")" "$(cat "$HOME/.config/cursor/auth.json" 2>/dev/null)" "$(readlink "$HOME/Library/Keychains")" > "$CURSOR_CAPTURE.env"
 sleep 300 >/dev/null 2>&1 &
 printf '%s\n' "$!" > "$CURSOR_CAPTURE.child"
 cat > "$CURSOR_CAPTURE.stdin"
@@ -310,11 +310,17 @@ case_cursor_named_reviewer() {
 }
 check "a named Cursor reviewer gets the review text on stdin and its JSON result is the report" case_cursor_named_reviewer
 case_cursor_reviewer_isolated() {
-    local home="$ROOT/cursor-user-home" run_home run_cwd share login
+    local home="$ROOT/cursor-user-home" run_home run_cwd share login keychains
     mkdir -p "$home/.config/cursor" "$home/.local/share"; printf 'LOGIN-COPY\n' > "$home/.config/cursor/auth.json"
     HOME="$home" REVIEW_CALLER=claude-code REVIEW_REVIEWER=cursor cursor_run "$ROOT/cursor-isolated.md" || return 1
-    IFS='|' read -r run_home run_cwd share login < "$CURSOR_CAPTURE.env"
-    [[ "$run_home" != "$home" && "$share" == "$home/.local/share" && "$login" == LOGIN-COPY ]] || return 1
+    IFS='|' read -r run_home run_cwd share login keychains < "$CURSOR_CAPTURE.env"
+    [[ "$run_home" != "$home" && "$share" == "$home/.local/share" ]] || return 1
+    # The login is a copy of auth.json on Linux; on macOS it lives in the login keychains, linked instead.
+    if [[ "$(uname -s)" == Darwin ]]; then
+        [[ -z "$login" && "$keychains" == "$home/Library/Keychains" ]] || return 1
+    else
+        [[ "$login" == LOGIN-COPY && -z "$keychains" ]] || return 1
+    fi
     [[ "$run_cwd" != "$PWD" && ! -e "$run_home" && ! -e "$run_cwd" ]]   # an empty folder, removed with the home afterwards
 }
 check "a Cursor reviewer runs in a throwaway home with only the login and install, from an empty folder" case_cursor_reviewer_isolated
@@ -721,7 +727,7 @@ case_plan_per_file_cap() {
     printf '# Plan B\n' > "$plan_b"
     printf '# Plan C\n' > "$plan_c"
     ledger="$ROOT/ledger-plan-perfile.jsonl"; : > "$ledger"
-    seed_plan_rows "$ledger" 3 "$plan_a" adhoc "$(date -Is)"
+    seed_plan_rows "$ledger" 3 "$plan_a" adhoc "$(date -Iseconds)"
 
     REVIEW_KIND=plan KEEP=1 run_review "$plan_a" || return 1                 # 4th pass runs
     REVIEW_KIND=doc KEEP=1 run_review "$plan_a" "$plan_b" || return 1        # 5th pass runs
@@ -743,8 +749,9 @@ check "a plan file gets five passes across aliases and target sets; the sixth is
 case_plan_cap_window() {
     local plan="$ROOT/window-plan.md" rc=0 old_a old_b
     printf '# Windowed plan\n' > "$plan"
-    old_a="$(date -Is -d '20 days ago')"
-    old_b="$(date -Is -d '19 days ago')"
+    # GNU date -d, or BSD date -v on macOS.
+    old_a="$(date -Iseconds -d '20 days ago' 2>/dev/null || date -Iseconds -v-20d)"
+    old_b="$(date -Iseconds -d '19 days ago' 2>/dev/null || date -Iseconds -v-19d)"
     ledger="$ROOT/ledger-plan-window.jsonl"; : > "$ledger"
     seed_plan_rows "$ledger" 3 "$plan" adhoc "$old_a"
     seed_plan_rows "$ledger" 2 "$plan" adhoc "$old_b"
@@ -771,7 +778,7 @@ case_plan_journey_cap() {
     printf '# Journey plan C\n' > "$plan_c"
     printf '%s\n' "$ROOT" > "$fence"
     ledger="$ROOT/ledger-plan-journey.jsonl"; : > "$ledger"
-    seed_plan_rows "$ledger" 3 "$ROOT/journey-seed.md" j-plan "$(date -Is)"
+    seed_plan_rows "$ledger" 3 "$ROOT/journey-seed.md" j-plan "$(date -Iseconds)"
 
     REVIEW_JOURNEY=j-plan CHARTER=plan FENCE="$fence" REVIEW_KIND=plan KEEP=1 \
         run_review "$plan_a" || return 1                                     # 4th

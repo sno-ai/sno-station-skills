@@ -25,7 +25,7 @@ test('elapsed local labeling time does not leave the remaining sessions unjudged
   assert.doesNotMatch(result.lines.join('\n'), /labeler-timeout/);
 });
 
-test('a hanging own-CLI call times out and kills its process group', { skip: process.platform !== 'linux' ? 'needs a POSIX process group' : false }, () => {
+test('a hanging own-CLI call times out and kills its process group', { skip: process.platform !== 'linux' && process.platform !== 'darwin' ? 'needs a POSIX process group' : false }, () => {
   const bin = tmp('timeout-bin');
   const marker = `REMCLI-${process.pid}-${Date.now()}`;
   writeFileSync(join(bin, 'codex'), [

@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# Every row launches through systemd scopes and reads cgroups.
+if [[ "$(uname -s)" != Linux ]]; then
+    printf 'ok # SKIP (Linux only): spawn-exec operate launches (systemd scopes, cgroups)\n'
+    exit 0
+fi
+
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 launcher="$script_dir/spawn-exec.sh"
 # lane-resolve.sh reclaims expired leases through cos-claim.sh, which lives in the

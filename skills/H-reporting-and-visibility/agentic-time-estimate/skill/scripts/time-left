@@ -25,12 +25,28 @@ set -Eeuo pipefail
 
 die() { printf 'time-left: %s\n' "$*" >&2; exit 2; }
 
-# --pid and --find read elapsed seconds from procps `ps -o etimes` (Linux). Elsewhere `ps` fails
-# and a live pid would be reported as already finished, so stop here with the real cause.
+# --pid and --find read elapsed time from `ps -o etime` ([[dd-]hh:]mm:ss), which procps (Linux) and
+# BSD ps (macOS) both print; procps-only `etimes` does not exist on macOS. Without a working `ps`
+# a live pid would be reported as already finished, so stop here with the real cause.
 need_procps() {
-  if ! command -v pgrep >/dev/null 2>&1 || ! ps -o etimes= -p "$$" >/dev/null 2>&1; then
-    die "requires Linux procps (ps with the etimes column, and pgrep); --tasks works without them"
+  if ! command -v pgrep >/dev/null 2>&1 || ! ps -o etime= -p "$$" >/dev/null 2>&1; then
+    die "requires ps (with the etime column) and pgrep; --tasks works without them"
   fi
+}
+
+# elapsed_seconds <pid>: whole seconds the process has run; prints nothing when it is gone or the
+# value is unreadable. 10# keeps a zero-padded field such as 08 from being read as octal.
+elapsed_seconds() {
+  local t d=0 h=0 m s
+  t=$(ps -o etime= -p "$1" 2>/dev/null | tr -d ' ') || true
+  case "$t" in *-*) d=${t%%-*}; t=${t#*-};; esac
+  case "$t" in
+    *:*:*) h=${t%%:*}; t=${t#*:};;
+  esac
+  m=${t%%:*}; s=${t#*:}
+  case "$d$h$m$s" in ''|*[!0-9]*) return 0;; esac
+  [ "$m" != "$t" ] || return 0
+  printf '%d\n' $(( 10#$d * 86400 + 10#$h * 3600 + 10#$m * 60 + 10#$s ))
 }
 
 case "${1:-}" in
@@ -60,7 +76,8 @@ case "${1:-}" in
       # the failing command, so `set -e` kills the script BEFORE the empty-value
       # guard on the next line can run, producing no error message.
       pcomm=$(ps -o comm= -p "$probe" 2>/dev/null | tr -d ' ') || true
-      if [ "$pcomm" = "timeout" ]; then wrapper=$probe; break; fi
+      # macOS ps prints comm as the full path when the wrapper was started by path.
+      if [ "${pcomm##*/}" = "timeout" ]; then wrapper=$probe; break; fi
       probe=$(ps -o ppid= -p "$probe" 2>/dev/null | tr -d ' ') || true
       case "$probe" in ''|*[!0-9]*) break;; esac
       hops=$(( hops + 1 ))
@@ -78,7 +95,7 @@ case "${1:-}" in
         printf 'deadline: %s (from wrapper pid %s)\n' "$deadline" "$wrapper"
       fi
     else
-      etimes=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ') || true
+      etimes=$(elapsed_seconds "$pid")
       case "$etimes" in ''|*[!0-9]*) die "pid $pid: cannot read elapsed time";; esac
       printf 'running: %dh%02dm elapsed — no deadline exists (no timeout wrapper)\n' \
         $(( etimes / 3600 )) $(( (etimes % 3600) / 60 ))
@@ -125,7 +142,7 @@ case "${1:-}" in
     while read -r cand; do
       [ -n "$cand" ] || continue
       case "$self_chain" in *" $cand "*) continue;; esac
-      etimes=$(ps -o etimes= -p "$cand" 2>/dev/null | tr -d ' ') || true
+      etimes=$(elapsed_seconds "$cand")
       case "$etimes" in ''|*[!0-9]*) continue;; esac
       args=$(ps -o args= -p "$cand" 2>/dev/null | cut -c1-90) || true
       printf 'pid %s  %dh%02dm elapsed  %s\n' \

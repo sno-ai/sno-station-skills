@@ -59,6 +59,14 @@ check() { # label expected actual
 
 state_of() { bash "$TARGET" --callsign "$1" "${@:2}" 2>/dev/null | sed -n 's/^state=//p'; }
 
+skip_linux_only() { # label
+    n=$((n + 1))
+    printf 'ok %d # SKIP (Linux only): %s\n' "$n" "$1"
+}
+
+# Move a file's modification time ten minutes back: GNU touch -d, else BSD touch -A (macOS).
+backdate_ten_minutes() { touch -d '-10 minutes' "$1" 2>/dev/null || touch -A -1000 "$1"; }
+
 record() { # callsign pane runtime session_file state_file [spawn_id]
     printf '{"ts":"now","pid":1,"callsign":"%s","pane":"%s","runtime":"%s","session_file":"%s","state_file":"%s","spawn_id":"%s"}\n' \
         "$1" "$2" "$3" "$4" "$5" "${6:-s1}" >> "$AGENT_SPAWNS"
@@ -89,7 +97,7 @@ pane_turn="$(tmux list-panes -t "$cs_turn" -F '#{pane_id}' | head -1)"
 printf '{"type":"session_meta"}\n{"type":"response_item"}\n' > "$root/codex-open.jsonl"
 record "$cs_turn" "$pane_turn" codex "$root/codex-open.jsonl" "$root/turn.state"
 check 'codex: an open turn with a fresh file is reasoning, not idle' reasoning "$(state_of "$cs_turn")"
-touch -d '-10 minutes' "$root/codex-open.jsonl"
+backdate_ten_minutes "$root/codex-open.jsonl"
 check 'codex: the same open turn gone quiet is stalled' stalled "$(state_of "$cs_turn")"
 touch "$root/codex-open.jsonl"
 
@@ -127,10 +135,13 @@ claude_chain() { # label child-mode session-file -> callsign
     if [[ "$child_mode" == same-group ]]; then
         child_line='sleep 400 &'
     else
-        child_line='setsid sleep 400 &'
+        # Job control gives the background child its own process group (setsid is Linux-only).
+        child_line='set -m; sleep 400 &'
     fi
-    printf '#!/usr/bin/env bash\nset -o pipefail\ntimeout --foreground --signal=TERM --kill-after=5 300s %q -c %q\nsleep 86400\n' \
-        "$root/claude" "$child_line wait" > "$runner"
+    # The runtime is started by bare name, as the launcher starts it: macOS reports a process's
+    # comm as its argv[0], so a path there would not read as "claude".
+    printf '#!/usr/bin/env bash\nset -o pipefail\nPATH=%q:"$PATH" timeout --foreground --signal=TERM --kill-after=5 300s claude -c %q\nsleep 86400\n' \
+        "$root" "$child_line wait" > "$runner"
     sessions+=("$cs")
     tmux new-session -d -s "$cs" -x 100 -y 30 "bash $runner"
     sleep 2
@@ -158,7 +169,7 @@ printf '%s\n' \
     > "$root/claude-open.jsonl"
 cs_c_open="$(claude_chain open same-group "$root/claude-open.jsonl")"
 check 'claude: a fresh open turn with only helpers is reasoning' reasoning "$(state_of "$cs_c_open")"
-touch -d '-10 minutes' "$root/claude-open.jsonl"
+backdate_ten_minutes "$root/claude-open.jsonl"
 check 'claude: the same open turn gone quiet is stalled' stalled "$(state_of "$cs_c_open")"
 
 printf '%s\n' \
@@ -322,31 +333,38 @@ check 'a pane with no child and no session file is idle, and that is deliberate'
 # so the pane ALWAYS has a child, the instrument returned `working` immediately every time,
 # and `reasoning`, `stalled` and `idle` were unreachable for every real executor. A hung
 # agent looked healthy indefinitely, which is the single thing this instrument exists to stop.
-runtime_stub="$root/codex"
-cp /bin/sleep "$runtime_stub"
-cs_real="walk-state-real-$$"; sessions+=("$cs_real")
-real_unit="walk-state-real-$$.scope"; units+=("$real_unit")
-real_runner="$root/real-runner.sh"
-printf '#!/usr/bin/env bash\nset -o pipefail\nsystemd-run --user --scope --quiet --unit=%q env SNO_EXEC_SPAWN_ID=%q %q 3000\nsleep 86400\n' \
-    "$real_unit" "walk-state-real-$$" "$runtime_stub" >"$real_runner"
-chmod +x "$real_runner"
-tmux new-session -d -s "$cs_real" -x 100 -y 30 "bash $real_runner"
-sleep 1
-pane_real="$(tmux list-panes -t "$cs_real" -F '#{pane_id}' | head -1)"
+# The parked-runner row below reads this closed turn on every platform.
 printf '{"type":"response_item"}\n{"type":"event_msg","payload":{"type":"task_complete"}}\n' \
     > "$root/real-closed.jsonl"
-record "$cs_real" "$pane_real" codex "$root/real-closed.jsonl" "$root/real.state"
-check 'the current systemd-scope runner shape with a closed turn is idle, not working' \
-    idle "$(state_of "$cs_real")"
+if [[ "$(uname -s)" == Linux ]]; then
+    runtime_stub="$root/codex"
+    cp /bin/sleep "$runtime_stub"
+    cs_real="walk-state-real-$$"; sessions+=("$cs_real")
+    real_unit="walk-state-real-$$.scope"; units+=("$real_unit")
+    real_runner="$root/real-runner.sh"
+    printf '#!/usr/bin/env bash\nset -o pipefail\nsystemd-run --user --scope --quiet --unit=%q env SNO_EXEC_SPAWN_ID=%q %q 3000\nsleep 86400\n' \
+        "$real_unit" "walk-state-real-$$" "$runtime_stub" >"$real_runner"
+    chmod +x "$real_runner"
+    tmux new-session -d -s "$cs_real" -x 100 -y 30 "bash $real_runner"
+    sleep 1
+    pane_real="$(tmux list-panes -t "$cs_real" -F '#{pane_id}' | head -1)"
+    record "$cs_real" "$pane_real" codex "$root/real-closed.jsonl" "$root/real.state"
+    check 'the current systemd-scope runner shape with a closed turn is idle, not working' \
+        idle "$(state_of "$cs_real")"
 
-printf '{"type":"session_meta"}\n{"type":"response_item"}\n' > "$root/real-open.jsonl"
-: > "$AGENT_SPAWNS"
-record "$cs_real" "$pane_real" codex "$root/real-open.jsonl" "$root/real.state"
-check 'the same shape with an OPEN turn is reasoning — the turn signal is reachable at last' \
-    reasoning "$(state_of "$cs_real")"
-touch -d '-10 minutes' "$root/real-open.jsonl"
-check 'and when that open turn stops moving it is stalled, which was unreachable before' \
-    stalled "$(state_of "$cs_real")"
+    printf '{"type":"session_meta"}\n{"type":"response_item"}\n' > "$root/real-open.jsonl"
+    : > "$AGENT_SPAWNS"
+    record "$cs_real" "$pane_real" codex "$root/real-open.jsonl" "$root/real.state"
+    check 'the same shape with an OPEN turn is reasoning — the turn signal is reachable at last' \
+        reasoning "$(state_of "$cs_real")"
+    backdate_ten_minutes "$root/real-open.jsonl"
+    check 'and when that open turn stops moving it is stalled, which was unreachable before' \
+        stalled "$(state_of "$cs_real")"
+else
+    skip_linux_only 'the current systemd-scope runner shape with a closed turn is idle, not working'
+    skip_linux_only 'the same shape with an OPEN turn is reasoning — the turn signal is reachable at last'
+    skip_linux_only 'and when that open turn stops moving it is stalled, which was unreachable before'
+fi
 
 # The runner parks on this exact command once the runtime returns, so the pane still has a
 # child. Counting it made a finished executor look busy forever.

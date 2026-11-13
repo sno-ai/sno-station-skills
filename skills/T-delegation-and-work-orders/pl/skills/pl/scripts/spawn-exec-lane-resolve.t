@@ -27,7 +27,7 @@ git -C "$repo" -c user.name='Lane Test' -c user.email='lane@invalid' \
 
 registry="$root/registry.tsv"
 SNO_PL_REGISTRY="$registry" SNO_REACH_ROOT="$root/reach" "$cos_claim" open setup >/dev/null
-sed -i '2,$d' "$registry"
+sed -i.bak '2,$d' "$registry" && rm -f -- "$registry.bak"
 {
     printf 'multi\talpha\tpl.alpha@host1\tmulti\tcodex\tcos/sno-alpha\tRUN\t-\n'
     printf 'multi\tbeta\tpl.beta@host1\tmulti\tcodex\tcos/example-repo\tRUN\t-\n'
@@ -71,7 +71,7 @@ check 'PL_LANE resolves the launcher past lane selection' \
 
 # Make the explicitly selected row observably distinct from the environment-selected row.
 # If the launcher ignores --lane, alpha remains valid and reaches callsign.sh instead.
-sed -i 's/pl\.beta@host1/not-a-pl-address/' "$registry"
+sed -i.bak 's/pl\.beta@host1/not-a-pl-address/' "$registry" && rm -f -- "$registry.bak"
 run_spawn explicit-lane alpha --lane beta
 check '--lane overrides PL_LANE and selects the explicit row' \
     bash -c 'test "$1" -eq 2 && grep -Fq "lane beta has no strict PL address (not-a-pl-address)" "$2"' \

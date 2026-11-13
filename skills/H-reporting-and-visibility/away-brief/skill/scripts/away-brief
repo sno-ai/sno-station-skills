@@ -4,7 +4,8 @@
 # heartbeats, the quota reader); the one thing it writes is its own list of quota readings (Reach may also note that it has seen the cards its inbox read listed), because a
 # reading shows usage now and only two readings show what was spent. A source it cannot read is named on
 # a `not read: <what> -> <why>` line and the rest still prints.
-# Exit 0 printed, 2 bad usage. Needs bash 4+, GNU date and find, git and jq; sno deliver-proof, sno handoff-checkpoint
+# Exit 0 printed, 2 bad usage. Needs bash 4+, git and jq; without GNU date (macOS) also python3, and a --since date
+# must then be ISO 8601 (no zone means UTC). sno deliver-proof, sno handoff-checkpoint
 # records, sno, sno heartbeat and sno subscription-quota-check are used when present.
 set -Eeuo pipefail
 
@@ -47,13 +48,18 @@ while (( $# )); do
   esac
 done
 
+# GNU date first; BSD date and python3 where GNU is absent (macOS).
+epoch_of() { # <date text> -> epoch seconds
+  date -u -d "$1" +%s 2>/dev/null ||
+    python3 -c 'import datetime as d, sys; s = sys.argv[1]; t = d.datetime.fromisoformat(s[:-1] + "+00:00" if s.endswith("Z") else s); print(int((t if t.tzinfo else t.replace(tzinfo=d.timezone.utc)).timestamp()))' "$1" 2>/dev/null
+}
 if [[ "$SINCE" =~ ^([0-9]+)([mhd])$ ]]; then
-  case "${BASH_REMATCH[2]}" in m) unit=minutes ;; h) unit=hours ;; d) unit=days ;; esac
-  cutoff_epoch="$(date -u -d "${BASH_REMATCH[1]} $unit ago" +%s)"
+  case "${BASH_REMATCH[2]}" in m) unit=60 ;; h) unit=3600 ;; d) unit=86400 ;; esac
+  cutoff_epoch=$(( $(date -u +%s) - 10#${BASH_REMATCH[1]} * unit ))
 else
-  cutoff_epoch="$(date -u -d "$SINCE" +%s 2>/dev/null)" || { printf 'away-brief: cannot read --since %s (use 12h, 2d, 30m or a date)\n' "$SINCE" >&2; exit 2; }
+  cutoff_epoch="$(epoch_of "$SINCE")" || { printf 'away-brief: cannot read --since %s (use 12h, 2d, 30m or a date)\n' "$SINCE" >&2; exit 2; }
 fi
-cutoff_iso="$(date -u -d "@$cutoff_epoch" +%Y-%m-%dT%H:%M:%SZ)"
+cutoff_iso="$(date -u -d "@$cutoff_epoch" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$cutoff_epoch" +%Y-%m-%dT%H:%M:%SZ)"
 now_epoch="$(date -u +%s)"
 have() { command -v "$1" >/dev/null 2>&1; }
 
@@ -118,7 +124,7 @@ find_files() { # <name glob> <marker regex>
   for d in "${scan_dirs[@]}"; do
     [[ -d "$d" ]] || continue
     find "$d" -maxdepth 6 \( -name .git -o -name node_modules \) -prune -o -type f -name "$1" -print0 2>/dev/null
-  done | xargs -0 -r grep -l -m1 -E -- "$2" 2>/dev/null | xargs -r -d '\n' realpath -- | sort -u || true
+  done | xargs -0 -r grep -l -m1 -E -- "$2" 2>/dev/null | tr '\n' '\0' | xargs -0 -r realpath -- | sort -u || true
 }
 front() { sed -n '1,/^---$/{/^---$/!p}' "$2" | sed -n "s/^$1: *//p" | head -n1; }
 
@@ -126,11 +132,11 @@ if have sno; then
   n_done=0 n_stuck=0
   while IFS= read -r f; do
     [[ -n "$f" ]] || continue
-    status="$(sed -n '2,/^---$/{s/^status: *//p}' "$f" | head -n1)"
-    title="$(sed -n '2,/^---$/{s/^title: *//p}' "$f" | head -n1)"
+    status="$(sed -n '2,/^---$/{s/^status: *//p;}' "$f" | head -n1)"
+    title="$(sed -n '2,/^---$/{s/^title: *//p;}' "$f" | head -n1)"
     [[ "$status" == delivered || "$status" == released ]] || continue
     (( ${#title} <= 70 )) || title="${title:0:70}..."
-    mtime="$(stat -c %Y "$f")"
+    mtime="$(stat -c %Y -- "$f" 2>/dev/null || stat -f %m -- "$f")"
     if [[ "$status" == delivered ]] && (( mtime >= cutoff_epoch )); then
       summary="$(sno deliver-proof check "$f" 2>/dev/null | tail -n1 || true)"
       if [[ "$summary" =~ ^([0-9]+)/([0-9]+)\ checks\ proven && "${BASH_REMATCH[1]}" == "${BASH_REMATCH[2]}" ]]; then
@@ -142,7 +148,7 @@ if have sno; then
       report="$(sno deliver-proof check "$f" 2>/dev/null || true)"
       summary="$(tail -n1 <<<"$report")"
       if [[ "$summary" =~ ^([0-9]+)/([0-9]+)\ checks\ proven ]] && [[ "${BASH_REMATCH[1]}" != "${BASH_REMATCH[2]}" ]]; then
-        bad="$(sed -n 's/^check \([0-9]*\): NOT proven.*/check \1/p' <<<"$report" | paste -sd, | sed 's/,/, /g')"
+        bad="$(sed -n 's/^check \([0-9]*\): NOT proven.*/check \1/p' <<<"$report" | paste -sd, - | sed 's/,/, /g')"
         (( ++n_stuck <= LIST_MAX )) && stuck+=("charter not finished: $title, ${BASH_REMATCH[1]}/${BASH_REMATCH[2]} proven; not proven: $bad; $f")
       elif [[ "$summary" =~ ^([0-9]+)/([0-9]+)\ checks\ proven ]]; then
         (( ++n_stuck <= LIST_MAX )) && stuck+=("charter ready to close: $title, all ${BASH_REMATCH[2]} checks proven but its status is still released; $f")
@@ -163,7 +169,7 @@ while IFS= read -r f; do
   rec() { sed -n "/^<!-- machine-record:start -->\$/,/^<!-- machine-record:end -->\$/s/^$1: //p" "$f" | head -n1; }
   updated="$(rec updated)"; by="$(rec by)"
   [[ -n "$updated" ]] || continue
-  u_epoch="$(date -u -d "$updated" +%s 2>/dev/null)" || continue
+  u_epoch="$(epoch_of "$updated")" || continue
   tasks="$(awk '/^## Next$/ { on = 1; next } /^## / { on = 0 } on && NF && tolower($0) !~ /^(- )?(\(?none\)?|n\/a)\.?$/' "$f" | grep -c . || true)"
   age_h=$(( (now_epoch - u_epoch) / 3600 ))
   if (( tasks > 0 && age_h >= QUIET_HOURS )); then

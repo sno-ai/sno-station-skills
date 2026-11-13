@@ -2,8 +2,8 @@
 # exec-state.sh — say what an executor is doing right now, from disk, without asking it.
 #
 # A supervisor should be able to say that an agent is alive and what it is doing; "alive"
-# alone does not distinguish work from a stall. Needs Linux with tmux, ps (procps), jq,
-# awk and find (checked at start).
+# alone does not distinguish work from a stall. Needs Linux or macOS with tmux, ps,
+# jq, awk and find (checked at start); lsof finds a --pid process's directory on macOS.
 #
 # Two instruments, because neither answers alone:
 #
@@ -49,6 +49,39 @@ STALE_SECONDS_DEFAULT=180
 # always has a child. It is not work.
 readonly RUNNER_IDLE_TRAILER='sleep 86400'
 
+# GNU stat (Linux) and BSD stat (macOS) spell the same question differently; ask once.
+# Each prints "<mtime seconds with fraction> <path>" per file.
+if stat -c %Y -- / >/dev/null 2>&1; then
+    readonly -a STAT_MTIME=(stat -c '%.9Y %n' --)
+else
+    readonly -a STAT_MTIME=(stat -f '%Fm %N' --)
+fi
+
+# The direct children of a pid, one line each with the requested ps columns. `ps --ppid`
+# exists only in procps, so the whole table is read and filtered by parent instead.
+children() { # pid ps-columns
+    ps -A -o "ppid=,$2" 2>/dev/null | awk -v p="$1" '$1 == p { sub(/^ *[0-9]+ +/, ""); print }'
+}
+
+# Epoch seconds for a date string. GNU date parses it as given; BSD date needs the exact
+# input format, and its %z accepts neither "Z" nor a colon inside the offset.
+epoch_of() { # text bsd-input-format
+    local text="$1"
+    date -d "$text" +%s 2>/dev/null && return 0
+    [[ "$text" != *Z ]] || text="${text%Z}+0000"
+    [[ ! "$text" =~ ^(.*[+-][0-9][0-9]):([0-9][0-9])$ ]] || text="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
+    date -j -f "$2" "$text" +%s 2>/dev/null
+}
+
+# The working directory of a live process: /proc on Linux, lsof where there is no /proc.
+cwd_of() { # pid
+    if [[ -d /proc/self ]]; then
+        readlink "/proc/$1/cwd"
+    else
+        lsof -a -p "$1" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p'
+    fi
+}
+
 # Every descendant of a pid, breadth-first, as "pid comm args". The pane process is the
 # runner script, so what the agent is doing is never inferred from the pane process itself.
 # The runner's child is the dedicated-scope runtime, whose children are the commands the
@@ -61,7 +94,7 @@ descendants() { # pid
             [[ -n "$kid" ]] || continue
             printf '%s %s %s\n' "$kid" "$kcomm" "$kargs"
             queue+=("$kid")
-        done < <(ps --ppid "$pid" -o pid=,comm=,args= 2>/dev/null || true)
+        done < <(children "$pid" pid=,comm=,args= || true)
     done
 }
 
@@ -75,8 +108,8 @@ discover_session_file() { # runtime checkout since-epoch
             slug="$(printf '%s' "$checkout" | tr '/.' '--')"
             dir="$HOME/.claude/projects/$slug"
             [[ -d "$dir" ]] || return 1
-            find "$dir" -maxdepth 1 -name '*.jsonl' -newermt "@$since" -printf '%T@ %p\n' 2>/dev/null |
-                sort -rn | head -1 | cut -d' ' -f2-
+            find "$dir" -maxdepth 1 -name '*.jsonl' -exec "${STAT_MTIME[@]}" {} + 2>/dev/null |
+                awk -v since="$since" '$1 > since' | sort -rn | head -1 | cut -d' ' -f2-
             ;;
         codex)
             # The path carries only a date, so the working directory is read from the file's
@@ -88,8 +121,9 @@ discover_session_file() { # runtime checkout since-epoch
                     printf '%s\n' "$f"
                     return 0
                 fi
-            done < <(find "$HOME/.codex/sessions" -name 'rollout-*.jsonl' -newermt "@$since" \
-                        -printf '%T@ %p\n' 2>/dev/null | sort -rn | cut -d' ' -f2-)
+            done < <(find "$HOME/.codex/sessions" -name 'rollout-*.jsonl' \
+                        -exec "${STAT_MTIME[@]}" {} + 2>/dev/null |
+                        awk -v since="$since" '$1 > since' | sort -rn | cut -d' ' -f2-)
             return 1
             ;;
         *) return 1 ;;
@@ -122,7 +156,7 @@ missing=()
 for _tool in ps jq awk find; do command -v "$_tool" >/dev/null || missing+=("$_tool"); done
 if [[ -z "$pid_arg" ]]; then command -v tmux >/dev/null || missing+=(tmux); fi
 if ((${#missing[@]} > 0)); then
-    printf 'exec-state: missing dependency: %s (needs Linux with tmux, ps, jq, awk and find)\n' "${missing[*]}" >&2
+    printf 'exec-state: missing dependency: %s (needs tmux, ps, jq, awk and find)\n' "${missing[*]}" >&2
     exit 69
 fi
 [[ "$stale_seconds" =~ ^[0-9]+$ ]] ||
@@ -152,7 +186,9 @@ if [[ -n "$pid_arg" ]]; then
         detail="no process with pid $pid_arg"
         emit_state
     fi
+    # macOS reports comm as argv[0], which can be a path; Linux reports a bare name.
     [[ -n "$runtime" ]] || runtime="$(ps -o comm= -p "$pid_arg" 2>/dev/null | tr -d ' ' || true)"
+    runtime="${runtime##*/}"
     pane_pid="$pid_arg"
     runtime_pid="$pid_arg"
     candidate_pid="$pid_arg"
@@ -213,13 +249,14 @@ fi
     pane_pid="$(tmux list-panes -t "$callsign" -F '#{pane_pid}' 2>/dev/null | head -1 || true)"
 if [[ -n "$pane_pid" ]]; then
     tree="$(descendants "$pane_pid")"
-    wall_pid="$(ps --ppid "$pane_pid" -o pid=,comm= 2>/dev/null |
-        awk '$2 == "timeout" { print $1; exit }' || true)"
+    wall_pid="$(children "$pane_pid" pid=,comm= |
+        awk '{ c = $2; sub(/.*\//, "", c) } c == "timeout" { print $1; exit }' || true)"
     wall_kids=''
-    [[ -z "$wall_pid" ]] || wall_kids="$(ps --ppid "$wall_pid" -o pid=,comm= 2>/dev/null || true)"
+    [[ -z "$wall_pid" ]] || wall_kids="$(children "$wall_pid" pid=,comm= || true)"
     if [[ -n "$wall_kids" ]] && (( $(grep -c . <<<"$wall_kids") == 1 )); then
         candidate_pid="$(awk '{ print $1 }' <<<"$wall_kids")"
         candidate_comm="$(awk '{ print $2 }' <<<"$wall_kids")"
+        candidate_comm="${candidate_comm##*/}"  # macOS ps prints comm as the started path
         if [[ "$candidate_comm" == "$runtime" ]]; then
             runtime_pid="$candidate_pid"
         else
@@ -229,7 +266,7 @@ if [[ -n "$pane_pid" ]]; then
     elif [[ -n "$tree" ]]; then
         # Dedicated-scope runner, or an agent started by hand. Fall back to the recorded
         # name inside this pane's tree only; two matches cannot be decided.
-        name_matches="$(awk -v rt="$runtime" '$2 == rt { print $1 }' <<<"$tree")"
+        name_matches="$(awk -v rt="$runtime" '{ c = $2; sub(/.*\//, "", c) } c == rt { print $1 }' <<<"$tree")"
         if [[ -n "$name_matches" ]]; then
             if (( $(grep -c . <<<"$name_matches") == 1 )); then
                 runtime_pid="$name_matches"
@@ -278,7 +315,7 @@ if [[ -n "$pane_pid" ]]; then
             # idle Claude can carry several such helper children, possibly named after other tools.
             runtime_pgid="$(ps -o pgid= -p "$runtime_pid" 2>/dev/null | tr -d ' ' || true)"
             if [[ -n "$runtime_pgid" ]]; then
-                argv="$(ps --ppid "$runtime_pid" -o pgid=,args= 2>/dev/null |
+                argv="$(children "$runtime_pid" pgid=,args= |
                     awk -v own="$runtime_pgid" '
                         $1 != own {
                             $1 = ""; sub(/^ +/, "")
@@ -289,7 +326,7 @@ if [[ -n "$pane_pid" ]]; then
         else
             # The idle-inhibitor child and codex-code-mode-host are session-long Codex
             # bookkeeping, not work; counting them would make every idle Codex read as working.
-            argv="$(ps --ppid "$runtime_pid" -o args= 2>/dev/null |
+            argv="$(children "$runtime_pid" args= |
                 grep -v 'systemd-inhibit' | grep -v 'codex-code-mode-host' | grep -v '^\[' | head -1 || true)"
         fi
     else
@@ -312,10 +349,10 @@ fi
 # from an agent hung.
 if [[ -z "$session_file" || ! -f "$session_file" ]]; then
     if [[ -n "$pid_arg" ]]; then
-        spawn_epoch="$(date -d "$(ps -o lstart= -p "$pid_arg" 2>/dev/null || true)" +%s 2>/dev/null || echo 0)"
-        checkout="${checkout_arg:-$(readlink "/proc/$pid_arg/cwd" 2>/dev/null || true)}"
+        spawn_epoch="$(epoch_of "$(ps -o lstart= -p "$pid_arg" 2>/dev/null || true)" '%a %b %d %T %Y' || echo 0)"
+        checkout="${checkout_arg:-$(cwd_of "$pid_arg" 2>/dev/null || true)}"
     else
-        spawn_epoch="$(date -d "$(jq -r '.ts // ""' <<<"$record" 2>/dev/null || true)" +%s 2>/dev/null || echo 0)"
+        spawn_epoch="$(epoch_of "$(jq -r '.ts // ""' <<<"$record" 2>/dev/null || true)" '%Y-%m-%dT%H:%M:%S%z' || echo 0)"
         checkout="$(jq -r '.repo // ""' <<<"$record" 2>/dev/null || true)"
     fi
     if [[ -n "$checkout" ]]; then
@@ -376,7 +413,9 @@ if [[ "$turn" == closed ]]; then
 fi
 
 now="$(date +%s)"
-mtime="$(stat -c %Y "$session_file" 2>/dev/null || echo 0)"
+mtime="$("${STAT_MTIME[@]}" "$session_file" 2>/dev/null || echo 0)"
+mtime="${mtime%% *}"
+mtime="${mtime%%.*}"
 age=$((now - mtime))
 if ((age <= stale_seconds)); then
     state=reasoning

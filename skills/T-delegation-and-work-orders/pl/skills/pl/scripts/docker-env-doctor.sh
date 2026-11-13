@@ -43,6 +43,9 @@ COUNTER_KEY_RE='queue|pending|in_?flight|active'
 set -uo pipefail
 
 die() { echo "docker-env-doctor: $*" >&2; exit 2; }
+# GNU grep -P, date -d, find -newermt and setsid carry its safety checks; BSD tools would
+# turn several of them into silent blanks, so other systems are refused outright.
+[ "$(uname -s)" = Linux ] || die "needs Linux with GNU grep, date, find and setsid (this host runs $(uname -s)); no verdict was given and nothing was touched"
 for tool in docker jq grep curl find date flock mktemp ss; do
   command -v "$tool" >/dev/null || die "required tool missing: $tool"
 done

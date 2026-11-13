@@ -3,6 +3,21 @@ set -Eeuo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 roster="${COS_ROSTER_UNDER_TEST:-$script_dir/cos-roster.sh}"
+
+# The roster reads the systemd turn lock and /proc. Off Linux it must refuse loudly; the
+# live rows below cannot run there.
+if [[ "$(uname -s)" != Linux ]]; then
+    refusal_rc=0
+    refusal="$(bash "$roster" --all 2>&1)" || refusal_rc=$?
+    if [[ "$refusal_rc" != 0 && "$refusal" == *'requires Linux'* ]]; then
+        printf 'ok 1 - off Linux the roster refuses and says why\n'
+    else
+        printf 'not ok 1 - off Linux the roster refuses and says why\n# exit %s: %s\n' "$refusal_rc" "$refusal"
+        exit 1
+    fi
+    printf 'ok 2 # SKIP (Linux only): live roster rows (systemd turn lock, /proc)\n1..2\n'
+    exit 0
+fi
 root="$(mktemp -d)"
 host="$(hostname)"
 socket="cos-roster-$RANDOM"
