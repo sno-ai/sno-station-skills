@@ -316,18 +316,31 @@ without Sno Station.
 
 #### [cross-vendor-security-audit](skills/J-peer-review-and-audit/cross-vendor-security-audit/) — a security audit that rereads what it threw away
 
-- **Built on Cloudflare's security-audit skill,** used under its MIT license: the same
-  source-first audit, the same evidence bar, the same validators and report.
-- **One step added.** A long audit sets things aside: notes filed as "hardening, not a finding",
-  rejected leads, areas it never got to. Before the report, a model from the other vendor
-  reads that whole pile against the source, with read-only access, and anything it brings back
-  is validated again.
-- **Disagreements stay visible.** If validation rejects a revived item again, the report lists
-  it under "Reviewers disagree" with both reasons. You decide.
-- **Why the other vendor.** On two open-source projects with known, already-fixed
-  vulnerabilities, both bugs the first pass saw and set aside came back through this step, one
-  of them only when the reviewer came from the other vendor. Two projects make a story, not a
-  rate.
+**Three Claude passes missed a published high-severity bug. One Codex pass over what Claude
+threw away found it.** On this bug every extra Claude pass repeated Claude's own reason for
+dropping it; the second vendor brought a different one.
+
+We audited follow-redirects 1.16.1, which has a known bug
+([GHSA-mrwp-f3q8-3g9p](https://github.com/advisories/GHSA-mrwp-f3q8-3g9p), high, fixed in 1.16.2):
+a list of secret headers built in another JavaScript realm is treated as empty, so the caller's
+API key follows a redirect to another host.
+
+- Claude, first audit: never saw it.
+- Claude, second audit: saw it, then filed it as "hardening, not a finding".
+- A fresh Claude rereading everything set aside: agreed, "caller misuse".
+- Codex, auditing alone: never saw it.
+- **Codex rereading what Claude set aside: disagreed, traced it through the source, and sent it
+  back for validation.**
+
+That last step is what this skill adds to Cloudflare's security-audit skill (used under its MIT
+license; same audit, evidence bar, validators and report). Before the report, a model from the
+other vendor rereads every item the audit set aside, read-only, and must answer every one;
+anything it brings back is validated again. If validation rejects it again, the report lists it
+under "Reviewers disagree" with both reasons, and you decide.
+
+Two projects, three known bugs: a story, not a rate. On the other project either vendor's
+reviewer recovered the bug. When Claude's first audit never looked at the bug, the reread of
+that audit did not find it either.
 
 *Use it when:* you want a full security audit of a codebase. With Sno Station it picks the
 other-vendor reviewer that still has quota; without it, it calls Codex from Claude Code or
