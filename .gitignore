@@ -1,7 +1,35 @@
-ai-doc/
-openspec/
-staging/
+# Private material. It lives in the private repository and is reached here only through ignored links.
+# Names without a trailing slash also match a symbolic link of that name.
+ai-doc
+openspec
+staging
+dev-scripts
+.claude
+.codex
+CLAUDE.md
 TODO.md*
+.env
+.env.*
+!.env.example
+/tests
+/deploy.sh
+/scripts/publish.sh
+/scripts/e2e
+/scripts/fixtures
+/scripts/selftest
+# Private parts of a unit.
+skills/*/*/docs/
+skills/*/*/tests/
+skills/*/*/sidecar/
+skills/**/reports/
+skills/**/prd/
+skills/*/*/PRD*
+skills/**/PROBE-RESULTS*
+skills/**/LESSIONS.md
+skills/**/*.private.*
+skills/**/*.sha256
+skills/**/.managed-by-sno-skills
+# Build output.
 __pycache__/
 *.pyc
 node_modules/
