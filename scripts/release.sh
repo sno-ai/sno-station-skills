@@ -9,7 +9,7 @@
 #   scripts/release.sh promote <tag>     after that pull request merged: check that main has exactly the tested tree,
 #                                        then replace the prerelease with the stable release <tag> on main, same archive
 #
-# `sno setup` installs the latest stable release unless --skills-tag names another, so a prerelease reaches only
+# `sno setup` installs the latest stable release unless --skills-version names another, so a prerelease reaches only
 # the machine that asks for it by tag. Exit: 0 done · 1 a step failed · 2 bad usage. Needs git, jq, gh, python3.
 set -Eeuo pipefail
 
@@ -58,7 +58,7 @@ case "${1:-}" in
     gh release create "$tag" "$out/final-skills.tar.gz" --repo "$GH_REPO" --target "$sha" --prerelease \
       --title "Sno Station skills $version (candidate)" --notes "$(notes "$version")" >/dev/null ||
       die "creating prerelease $tag failed"
-    log "prerelease $tag created from ${sha:0:12}; test it with: sno setup --skills-tag $tag"
+    log "prerelease $tag created from ${sha:0:12}; test it with: sno setup --skills-version $tag"
     printf '%s\n' "$tag"
     ;;
   promote)
