@@ -7,11 +7,11 @@
 # cards, called, rung, and can reply.
 #
 # Usage: join-talk.sh [<address>] [--name <display>]
-#   <address>  role.seat@host; default hand.<repo>@<host>, <repo> from the git top-level
+#   <address>  explicit address; default <call-name>.agent@<host>
 #   --name     display name; default <repo>
 # Stdout: exactly one line, `joined <address>`. Everything else is stderr.
-# Exit:  0 joined (or already joined from this terminal) · 2 usage · 3 no terminal
-#        identity (not under tmux, Orca or a Cursor IDE chat) · 4 `sno`, `jq` or `flock` is missing · the runtime's own status
+# Exit:  0 joined (or already joined from this terminal) · 2 usage · 3 no discoverable
+#        terminal identity · 4 `sno`, `jq` or `flock` is missing · the runtime's own status
 #        when init or register refuse.
 set -Eeuo pipefail
 
@@ -49,6 +49,10 @@ while (($# > 0)); do
   esac
 done
 
+command -v sno >/dev/null || die 4 'sno is missing: Reach registration needs it (installed by sno setup)'
+command -v jq >/dev/null || die 4 'jq is missing: join-talk needs it to detect another terminal holding the same address'
+command -v flock >/dev/null || die 4 'flock is missing: join-talk needs it so two terminals joining together do not pick the same address (install util-linux flock)'
+
 # The wake channel is whatever terminal this agent's shell inherited.
 if [[ -n "${TMUX_PANE:-}" ]]; then
   identity="tmux-pane:${TMUX_PANE}"
@@ -65,12 +69,11 @@ elif [[ -n "${CURSOR_CONVERSATION_ID:-}" && -z "${CURSOR_INVOKED_AS:-}" ]]; then
   reach_channel='cursor-ide'
   reach_handle="$CURSOR_CONVERSATION_ID"
 else
-  die 3 'no terminal to be reached at: this shell is under neither tmux, Orca nor a Cursor IDE chat'
+  terminal_info="$(sno reach terminal-info)" || die 3 'terminal discovery failed; see the Reach diagnostic above'
+  reach_handle="$(jq -er '.handle | strings | select(length > 0)' <<<"$terminal_info")" || die 3 'no terminal input endpoint was discovered'
+  reach_channel='terminal'
+  identity="terminal:$reach_handle"
 fi
-
-command -v sno >/dev/null || die 4 'sno is missing: Reach registration needs it (installed by sno setup)'
-command -v jq >/dev/null || die 4 'jq is missing: join-talk needs it to detect another terminal holding the same address'
-command -v flock >/dev/null || die 4 'flock is missing: join-talk needs it so two terminals joining together do not pick the same address (install util-linux flock)'
 
 host="$(hostname | tr '[:upper:]' '[:lower:]')"
 [[ -n "$host" ]] || die 4 'hostname printed nothing'
@@ -79,6 +82,8 @@ repo="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 repo="$(basename -- "$repo" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-\n' '-')"
 repo="${repo#-}"
 [[ -n "$repo" ]] || repo='shell'
+[[ -n "$name" ]] || name="$repo"
+call_name="$(printf '%s' "$name" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr -cd 'a-z0-9-')"
 
 # Same terminal, same seat: rerunning is a no-op. Another live terminal holding the derived
 # address gets out of the way with a numeric suffix.
@@ -86,26 +91,25 @@ seat_identity() {
   jq -r '.identity | "\(.kind):\(.value)"' "$STATE_ROOT/$1/reachable.json" 2>/dev/null || true
 }
 
-# One repo at a time chooses, initializes and registers, so two terminals joining together
+# One call name at a time chooses, initializes and registers, so two terminals joining together
 # cannot both pick the same free address.
-exec 9>"${XDG_RUNTIME_DIR:-/tmp}/sno-join-talk-${repo}-$(id -u).lock"
-flock -w 60 9 || die 4 "another join for ${repo} is still running after 60 s"
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/sno-join-talk-${call_name}@${host}-$(id -u).lock"
+flock -w 60 9 || die 4 "another join for ${name} is still running after 60 s"
 
 if [[ -z "$address" ]]; then
-  address="hand.${repo}@${host}"
+  address="${call_name}.agent@${host}"
   n=1
   while [[ -f "$STATE_ROOT/$address/reachable.json" && "$(seat_identity "$address")" != "$identity" ]]; do
     n=$((n + 1))
-    ((n <= 9)) || die 4 "nine seats already hold hand.${repo}*@${host}; pass an address"
-    address="hand.${repo}-${n}@${host}"
+    ((n <= 9)) || die 4 "nine seats already hold ${call_name}*.agent@${host}; pass an address"
+    address="${call_name}-${n}.agent@${host}"
   done
 fi
 [[ "$address" =~ $ADDRESS_RE ]] || die 2 "address must look like role.seat@host: $address"
-[[ -n "$name" ]] || name="$repo"
 
 sno reach init --as "$address" --name "$name" >/dev/null
 sno reach register --as "$address" --channel "$reach_channel" --handle "$reach_handle" >/dev/null
 
 printf 'joined %s\n' "$address"
-printf 'join: others reach you with sno reach send or sno reach call %s; you answer with sno reach reply --as %s\n' \
-  "$address" "$address" >&2
+printf 'join: others reach you with sno reach send; you answer with sno reach reply --as %s\n' \
+  "$address" >&2

@@ -1,6 +1,6 @@
 ---
 name: reach
-description: "Contact another agent, exchange work cards, inspect replies, or manage reachable seats through the installed Reach program. Use for communication; full task ownership transfer belongs to handoff."
+description: "Use Reach Instant Messenger for a response now and Agent Email for saved messages or tasks handled later. Contact agents, inspect replies, or manage reachable conversations. Full task ownership transfer belongs to handoff."
 requires:
   programs:
     - {name: reach, min_version: "2.0"}
@@ -10,6 +10,25 @@ requires:
 ---
 
 # Reach
+
+## Two features, one address
+
+Use the fixed names **Instant Messenger** and **Agent Email** when explaining Reach.
+Instant Messenger uses `sno reach call` to contact an agent and wait for its actual
+response. Agent Email uses `send`, `inbox`, `reply` and `wait` to save messages or tasks
+for later handling. Agent Email is not a personal email-inbox assistant.
+
+Use `join-talk` to register the current conversation. Report its exact returned address.
+For another machine, the installed build must support `network` and `peer`: start the
+receiving process on each machine and exchange contacts keyed by the full hostname
+after `@`. This is separate from registering an agent and is needed in both directions.
+The installed guide supplies the actual commands. Never claim public release availability
+from a development branch name.
+
+For a received `[CALL]` requesting a mail answer, read its original local file and use
+`sno reach reply --as YOUR_ADDRESS --card ORIGINAL_FILE` with the answer on stdin,
+without `--state`. For a task email, finish the `accepted` reply before doing the work
+and sending `completed` or `failed`. A replied call needs no further dismissal.
 
 Use `sno reach` for the communication the task authorizes. A seat is a reachable agent,
 a card is a stored message, and a ring asks the receiving agent to read its inbox.
@@ -50,10 +69,10 @@ never assume that a familiar seat name identifies the right running agent.
 | `sno reach register --as <address> --channel <channel> --handle <locator>` | This existing agent needs its actual runtime to be reachable. | Verify the matching seat record; do not register another agent's terminal as yourself. |
 | `sno reach unregister --as <address>` | This seat is leaving after its outstanding delivery duties have transferred. | Verify it is absent from seats; ensure future replies have a continuing recipient. |
 | `sno reach seats --json` | Choose or verify a recipient. | Inspect address, channel, handle and live/stale state before sending. |
-| `sno reach call <seat> <text> --timeout <seconds>` | Talk to the live agent now and inspect its next output. | Check the receipt and new output using the exit table below; this is not a request/response RPC. |
+| `sno reach call <seat> <text> --timeout <seconds>` | Instant Messenger: contact the agent and wait for its actual response. | Mail-reply paths return the threaded answer; capture-based paths verify receiver output. Inspect the result, not just the wake. |
 | `sno reach watch <seat> --timeout <seconds> --idle <seconds>` | Observe an existing agent without sending it a task. | Read its output; observation does not establish completion. |
 | `sno reach ring <seat>` | A stored card already exists and the recipient needs a wake. | Inspect rang, rang-unverified, busy, unregistered or failed; a ring writes no new card. |
-| `sno reach send --as <sender>` | Leave a valid card and ring its actionable recipients. | Supply the complete card on stdin; retain its Message-ID and distinguish delivery from wake. |
+| `sno reach send --as <sender>` | Agent Email: save and send a message or task for later handling. | Supply the complete card on stdin; retain its Message-ID and distinguish delivery from wake. |
 | `sno reach reply --as <address> --card <original-card> --state <state>` | Answer a caller-owned card or report its work state. | Supply a nonblank body on stdin, preserve the original work-card path, and inspect delivery. |
 | `sno reach inbox --as <address>` | Read work addressed to this seat. | Read the returned card paths; reading does not accept or complete them. `--cc` selects informed copies. |
 | `sno reach wait --as <address> --timeout <seconds>` | Wait for an actionable card within a finite deadline. | A returned path is not consumed. With `--reply-to <id>`, only answers match; `--from <address>` restricts the sender. |
@@ -71,7 +90,7 @@ never assume that a familiar seat name identifies the right running agent.
 
 | Exit | Meaning | Next action |
 |---|---|---|
-| 0 | The seat's receipt was seen and an optional expected pattern matched. | Inspect the new receiver output. Require the task's own result before claiming completion. |
+| 0 | An actual mail answer or verified receiver output arrived, matching `--expect` when supplied. | Inspect the returned response. Require the task's own result before claiming completion. |
 | 3 | The channel runtime refused the send. | Repair the runtime or request routing; no successful conversation is established. |
 | 4 | No qualifying receiver output arrived before the deadline. | Inspect the seat and delivery state before retrying; do not assume it did no work. |
 | 5 | The seat could not be read. | Verify its address, registration and runtime before attempting another call. |
