@@ -95,7 +95,10 @@ case "${1:-}" in
       mkdir -p -- "$stage/$(dirname -- "$path")"
       cp -a -- "$tree/$path" "$stage/$path"
     done
-    mapfile -t units < <(python3 -c 'import sys, yaml; print(*yaml.safe_load(open(sys.argv[1]))["units"], sep="\n")' "$tree/registry.yaml")
+    unit_list="$(python3 -c 'import sys, yaml; print(*yaml.safe_load(open(sys.argv[1]))["units"], sep="\n")' "$tree/registry.yaml")" ||
+      die "registry.yaml cannot be read; no archive written"
+    mapfile -t units <<<"$unit_list"
+    [[ -n "${units[0]:-}" ]] || die "registry.yaml lists no units; no archive written"
     total=${#units[@]}; started=$(date +%s)
     for index in "${!units[@]}"; do
       unit="${units[index]}"
