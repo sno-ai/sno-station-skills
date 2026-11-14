@@ -25,20 +25,21 @@ jobs:
           grep " gitleaks_${version}_linux_x64.tar.gz\$" "gitleaks_${version}_checksums.txt" | sha256sum -c -
           tar -xzf "gitleaks_${version}_linux_x64.tar.gz" gitleaks
           sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
-      - name: Install the sno program (the sno-cli self-test checks its help text)
+      - name: Fetch the sno program for the sno-cli self-test (SNO_BIN only, not on PATH)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Only the program from the public sno-cli release: no installer and no setup, so nothing is
-          # counted as an install.
+          # counted as an install. It stays off PATH: self-tests that need Sno Station commands skip when
+          # sno is not on PATH, and this program alone does not have those commands.
           asset=sno-x86_64-unknown-linux-gnu.tar.gz
           cd "$RUNNER_TEMP"
           gh release download --repo sno-ai/sno-cli --pattern "$asset"
           want=$(gh release view --repo sno-ai/sno-cli --json assets --jq ".assets[] | select(.name == \"$asset\") | .digest")
           [ "$want" = "sha256:$(sha256sum "$asset" | cut -d ' ' -f1)" ] || { echo "the sno download does not match its digest"; exit 1; }
           tar -xzf "$asset"
-          sudo install -m 0755 sno-x86_64-unknown-linux-gnu/sno /usr/local/bin/sno
-          sno --version
+          "$RUNNER_TEMP/sno-x86_64-unknown-linux-gnu/sno" --version
+          echo "SNO_BIN=$RUNNER_TEMP/sno-x86_64-unknown-linux-gnu/sno" >> "$GITHUB_ENV"
       - name: Check the change
         env:
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
