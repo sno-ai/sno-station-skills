@@ -620,7 +620,7 @@ skills/
     skills/<member>/            or a family of skills that ship together
     overlay/claude|codex/       per-agent differences, when a skill needs them
     public-bin/                 one file per `sno <file name>` command the skill provides
-    PUBLISHED.json              the stamp written by the publish step
+    PUBLISHED.json              the stamp, written into the release archive by the build
 registry.yaml                   unit -> category code (and tier)
 scripts/
   requirements-contract.json    the contract every requires: block is checked against

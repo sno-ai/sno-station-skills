@@ -1,24 +1,29 @@
 # AGENTS.md
 
-This repository is the published Sno Station skill library. It is generated from a private
-working repository on every release; changes made here directly are overwritten by the next
-release. To report a problem or suggest a change, open an issue.
+This repository is the source of the Sno Station skills. Pull requests are welcome;
+[CONTRIBUTING.md](CONTRIBUTING.md) says how we take them.
 
 - Install with `sno setup`, which puts each skill into every agent it finds on the machine.
-- Each unit lives in `skills/<category>/<unit>/`; `skills/README.md` lists units by category.
-- `PUBLISHED.json` in each unit records the publish check result; it is written by the release
-  build, never by hand.
+- Each unit lives in `skills/<category>/<unit>/`; `skills/README.md` lists units by category and
+  `registry.yaml` lists every unit that ships.
+- **Before you hand back a change**, run `bash scripts/check.sh origin/main` (needs gitleaks, PyYAML and
+  jq). It refuses private paths, secrets and absolute home paths, runs `scripts/check-unit.sh` on every
+  unit you touched, and checks the generated plugin files. The same check runs on every pull request.
+- After adding, moving or renaming a skill folder, run `bash scripts/build.sh --sync` and commit what
+  it changes (the plugin skill lists and the standalone plugin copies).
+- **Never add** machine-bound paths, private host names, credentials or links to private documents.
+  Skills are English only. Never name one model vendor as the careful one and the other as the fast
+  one.
+- Private working rules for this checkout, when present, are in `CLAUDE.md` beside this file. Read it too.
 
-## Releasing: always the release script, always automatic
+## Releasing
 
-- `sno setup` downloads `final-skills.tar.gz` from the latest GitHub release, never from this
-  branch. A change that reached `main` but not a release has not reached any user.
-- The private working repository's release script is the only way anything here changes. In one
-  run it builds the whole tree, pushes it to `main`, and creates the next GitHub release (patch
-  version + 1) with that build's `final-skills.tar.gz` as its only asset.
-- An agent that changes a published skill must run that release script after the change is
-  committed, every time, without waiting to be asked. Never edit this repository, push to it, or
-  create, edit or upload a GitHub release by hand.
-- Done means the latest release points at the current `main` commit and its asset digest
+- `sno setup` downloads `final-skills.tar.gz` from the latest stable GitHub release, never from this
+  branch. A change on `main` reaches `sno setup` users only with the next release.
+- Release with `scripts/release.sh`, in order: `bump` on a release branch and open its pull request;
+  `candidate` on that branch's head (a prerelease, which `sno setup` installs only when asked with
+  `--skills-tag`); install it on a fresh profile with `sno setup --skills-tag <tag>`; merge the pull
+  request; `promote <tag>`. Never create, edit or upload a GitHub release by hand.
+- Done means the latest release points at a `main` commit and its asset digest
   (`gh api repos/sno-ai/sno-station-skills/releases/latest --jq '.assets[0].digest'`) equals
-  `sha256sum final-skills.tar.gz` of the downloaded asset.
+  `sha256sum` of the downloaded `final-skills.tar.gz`.
