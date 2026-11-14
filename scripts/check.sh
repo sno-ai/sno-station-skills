@@ -48,15 +48,19 @@ printf '[extend]\nuseDefault = true\n' > "$scratch/gitleaks.toml"
  gitleaks git "$repo" --config "$scratch/gitleaks.toml" --gitleaks-ignore-path /dev/null --ignore-gitleaks-allow \
    --redact --no-banner --log-opts="-m $base..$head") || die "gitleaks found a secret"
 
-# 3. Absolute home paths, in every file (a unit not yet in registry.yaml gets no check-unit run).
-if git diff --no-color --unified=0 "$base" "$head" |
-   grep -nE '^\+[^+].*(/home/[A-Za-z0-9_-]+/|/Users/[A-Za-z0-9_-]+/|[A-Za-z]:\\Users\\)' >&2; then
+# 3. Absolute home paths, in every file and in every commit, not only the final difference (a unit not yet in
+#    registry.yaml gets no check-unit run, and an early commit is uploaded even when a later one removes the line).
+if git log -m -p --format= --no-color --unified=0 "$base..$head" | grep -vE '^\+\+\+ ' |
+   grep -nE '^\+.*(/home/[A-Za-z0-9_-]+/|/Users/[A-Za-z0-9_-]+/|[A-Za-z]:\\Users\\)' >&2; then
   die "absolute home paths in added lines (above)"
 fi
 
 # 4. Units the commits touch, as named in registry.yaml.
 mapfile -t touched < <(git diff --name-only "$base" "$head" -- skills/ | awk -F/ 'NF >= 4 {print $3}' | sort -u)
-mapfile -t known < <(python3 -c 'import sys, yaml; print(*yaml.safe_load(open(sys.argv[1]))["units"], sep="\n")' registry.yaml)
+known_list="$(python3 -c 'import sys, yaml; print(*yaml.safe_load(open(sys.argv[1]))["units"], sep="\n")' registry.yaml)" ||
+  die "registry.yaml cannot be read"
+mapfile -t known <<<"$known_list"
+[[ -n "${known[0]:-}" ]] || die "registry.yaml lists no units"
 for unit in "${touched[@]}"; do
   printf '%s\n' "${known[@]}" | grep -qxF -- "$unit" || { log "skipping $unit: not in registry.yaml (removed or new)"; continue; }
   bash scripts/check-unit.sh "$unit" || die "check-unit refused $unit"

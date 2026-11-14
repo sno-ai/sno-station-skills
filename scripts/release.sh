@@ -2,7 +2,8 @@
 # release.sh — release the skills in three steps, so no user gets a build before it was installed and tested.
 #
 #   scripts/release.sh bump              set the plugin version to 1.0.<UTC time YYYYmmddHHMM> in the three plugin
-#                                        manifests; commit it on the release branch and open its pull request
+#                                        manifests. It only edits them: commit them on a release branch, push it
+#                                        and open its pull request yourself, then run candidate on that branch
 #   scripts/release.sh candidate         from a clean checkout whose HEAD is on GitHub (the release pull request's
 #                                        head), build final-skills.tar.gz and create the next version as a prerelease
 #   scripts/release.sh promote <tag>     after that pull request merged: check that main has exactly the tested tree,
@@ -18,7 +19,7 @@ readonly MANIFESTS=(.codex-plugin/plugin.json plugins/sno-station-standalone/.cl
   plugins/sno-station-standalone/.codex-plugin/plugin.json)
 log() { printf 'release: %s\n' "$*" >&2; }
 die() { log "$*"; exit 1; }
-usage() { sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 for program in git jq gh python3; do command -v "$program" >/dev/null || die "$program is not installed"; done
 cd "$repo"
 
