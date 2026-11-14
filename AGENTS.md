@@ -22,7 +22,7 @@ This repository is the source of the Sno Station skills. Pull requests are welco
   branch. A change on `main` reaches `sno setup` users only with the next release.
 - Release with `scripts/release.sh`, in order: `bump` on a release branch and open its pull request;
   `candidate` on that branch's head (a prerelease, which `sno setup` installs only when asked with
-  `--skills-tag`); install it on a fresh profile with `sno setup --skills-tag <tag>`; merge the pull
+  `--skills-version`); install it on a fresh profile with `sno setup --skills-version <tag>`; merge the pull
   request; `promote <tag>`. Never create, edit or upload a GitHub release by hand.
 - Done means the latest release points at a `main` commit and its asset digest
   (`gh api repos/sno-ai/sno-station-skills/releases/latest --jq '.assets[0].digest'`) equals
