@@ -236,6 +236,14 @@ rm "$root/bin/claude"
 status="$(PATH="$root/sys:/usr/bin:/bin:$root/bin" srun)"
 grep -Eq '^not judged: claude -> ' "$root/out" && has '  found by the agent itself: 3' || fail 'a missing claude command is named; the codex moment is still judged'
 ok 'a failing or missing model is named and never stops the report'
+# The cases below need the stand-in again; without it they would call whatever claude is installed.
+rm -f "$root/bin/claude"; cat >"$root/bin/claude" <<'SH'
+#!/usr/bin/env bash
+[[ -z "${FAKE_MODEL_FAIL:-}" ]] || exit 1
+prompt="$(cat)"
+if [[ "$prompt" == *USER-POINTED* ]]; then echo PROMPTED; else echo SELF; fi
+SH
+chmod +x "$root/bin/claude"
 
 # a conversation file touched recently can hold old messages: only moments inside the window count
 mkdir -p "$root/ts/proj"
@@ -269,13 +277,6 @@ ok 'self: the most recent user message is shown to the model even when it is sev
 
 # ================= brief: the page an agent hands to the user =================
 brun() { run brief --since 2026-09-20 --claude-dir "$root/claude" --codex-dir "$root/codex" --stats "$root/stats.jsonl" --findings "$root/findings.jsonl" "$@"; }
-rm -f "$root/bin/claude"; cat >"$root/bin/claude" <<'SH'
-#!/usr/bin/env bash
-[[ -z "${FAKE_MODEL_FAIL:-}" ]] || exit 1
-prompt="$(cat)"
-if [[ "$prompt" == *USER-POINTED* ]]; then echo PROMPTED; else echo SELF; fi
-SH
-chmod +x "$root/bin/claude"
 status="$(brun)"
 [[ "$status" == 0 ]] || fail "brief exits 0 (got $status)"
 [[ "$(sed -n 1p "$root/out")" == '# Two brains, since 2026-09-20' ]] || fail 'the page opens with a title naming the period'
