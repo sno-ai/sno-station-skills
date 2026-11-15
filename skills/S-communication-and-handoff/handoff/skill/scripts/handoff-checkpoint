@@ -53,7 +53,7 @@ git_state() {
     UNCOMMITTED=()
     while IFS= read -r -d '' entry; do
         xy="${entry:0:2}"; path="${entry:3}"
-        [[ "$path" == "$skip" ]] && continue
+        [[ "$path" == "$skip" || ( -n "$skip" && "$path" == "$skip.lock" ) ]] && continue
         if [[ -f "$top/$path" ]]; then hash="$(sha256sum <"$top/$path" | cut -d' ' -f1)"; else hash='-'; fi
         UNCOMMITTED["$path"]="${xy// /} $hash"
     done < <(git -C "$top" status --porcelain=v1 -z --untracked-files=all --no-renames)
@@ -87,9 +87,19 @@ write_record() {  # <top> <checkpoint-number>
 
 TMP='' BLOCK='' RUNTIME='' SESSION_ID=''
 cmd_write() {  # <file> <repo>
-    local file="$1" repo="$2" top n=0
+    local file="$1" repo="$2" top n=0 lock_fd
     [[ -d "$(dirname -- "$file")" ]] || die "the folder for the record does not exist: $(dirname -- "$file")"
-    top="$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git work tree: $repo"
+    if command -v flock >/dev/null 2>&1; then
+        exec {lock_fd}>"$file.lock"
+        flock -x "$lock_fd"
+    fi
+    if top="$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null)"; then
+        git_state "$top" "$(rel_to_top "$top" "$file")"
+    else
+        [[ -d "$repo" ]] || die "not a directory: $repo"
+        top="$(resolve_path "$repo")"
+        BRANCH=none; HEAD_LINE=none
+    fi
     if [[ -e "$file" ]] && has_markers "$file"; then
         n="$(record_field "$file" checkpoint)"; n="${n:-0}"
         RUNTIME="$(record_field "$file" runtime)"
@@ -101,7 +111,6 @@ cmd_write() {  # <file> <repo>
         RUNTIME=claude-code; SESSION_ID="$CLAUDE_SESSION_ID"
     fi
     n=$((n + 1))
-    git_state "$top" "$(rel_to_top "$top" "$file")"
     TMP="$(mktemp "${file}.XXXXXX")"; BLOCK="$(mktemp "${file}.XXXXXX")"
     trap 'rm -f -- "$TMP" "$BLOCK"' EXIT
     write_record "$top" "$n" >"$BLOCK"
@@ -136,6 +145,10 @@ cmd_verify() {  # <file>
     old_branch="$(record_field "$file" branch)"
     old_head="$(record_field "$file" head)"; old_head="${old_head%% *}"
     [[ -n "$top" && -d "$top" ]] || die "the recorded checkout does not exist here: ${top:-none}"
+    if [[ "$old_branch" == none && "$old_head" == none ]]; then
+        printf 'No git state to compare.\n'
+        return 0
+    fi
     git -C "$top" rev-parse --show-toplevel >/dev/null 2>&1 || die "the recorded checkout is not a git work tree: $top"
 
     declare -A was=()

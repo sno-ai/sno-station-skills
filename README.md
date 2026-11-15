@@ -100,12 +100,17 @@ You keep working exactly as before, in whichever agent you like. Then:
 2. **You start a long run before bed.** Say "arm rotate-agent". If the working agent's quota
    drops to the threshold overnight, it hands the task to a fresh agent from the other vendor,
    with the brief verified before a single file is touched.
-3. **You come back.** Say "away brief". One page, at most 60 lines: what got done, what is
+3. **You want it done at a set time.** Say the time: "check the build tomorrow at 9", or
+   "write the report every morning at 7". An agent starts at that time and does it, with the
+   conversation open or closed. `sno heartbeat --due` shows what is scheduled. This part of Sno
+   Station is called Finish; the [guide](https://github.com/sno-ai/sno-station/blob/main/docs/finish.md)
+   has the details.
+4. **You come back.** Say "away brief". One page, at most 60 lines: what got done, what is
    stuck and why, what waits for your answer, and what it cost in quota.
-4. **You have a job for someone else.** Say "write a charter". You get one file that says what
+5. **You have a job for someone else.** Say "write a charter". You get one file that says what
    to deliver, what is out of bounds, what you already decided, and how each success check will
    be proven. Any agent can then `deliver` it, and every check is proven by a recorded real run.
-5. **Every night, the team looks back.** The nightly loop reads the day's Claude Code and Codex
+6. **Every night, the team looks back.** The nightly loop reads the day's Claude Code and Codex
    sessions, finds the mistakes that repeat, and proposes lessons and skill changes. In the
    morning you accept the ones you like with `sno rem-reflect accept <id>`. Nothing changes
    without that accept.
@@ -451,12 +456,15 @@ logged in and tmux.
 
 - **Two shapes:** report every N minutes (training, a long build, a generation queue), or watch
   until something finishes.
+- **A task at a set time:** tell the agent a date or a clock time, once or repeating. It writes
+  the task down, and an agent starts at that time even after the conversation is closed.
 - **Ticks land where you are:** each reading arrives in the agent's conversation, not in a log
   nobody reads.
 - **Hard to misuse:** intervals are in minutes, and a seconds-sized number is refused instead of
   silently waking your agent every few seconds.
 
-*Use it when:* something long is running unattended and you want to hear from it.
+*Use it when:* something long is running unattended and you want to hear from it, or a task
+has to happen at a time you will not be there for.
 
 #### [reach](skills/S-communication-and-handoff/reach/) — agents talk to each other
 

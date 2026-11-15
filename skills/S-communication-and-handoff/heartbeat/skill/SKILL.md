@@ -114,6 +114,26 @@ time is refused (exit 2), and an empty file appearing later does not end the wat
 file the job starts writing early is yours to rule out, and only the job's code can rule it
 out.
 
+## 3. At a date or clock time
+
+A heartbeat armed here belongs to this conversation and stops with it. For something due at a
+date or clock time ("report every morning at 7", "check the CI on Tuesday"), write an entry under
+`## Due` in your progress record with your file edit tool instead, and arm nothing:
+
+```
+## Due
+at: 2026-11-17 09:00 America/Los_Angeles
+repeat: daily
+do: check whether PR 412's CI passed and tell the owner
+```
+
+`repeat` is optional (`daily` or `weekly`). A machine-wide heartbeat that `sno setup` installs
+reads these entries every minute and, at the time, continues this conversation (a copy of it
+when it is still open) or starts a fresh agent on the record, even after a restart. Never write
+the `last:` line; it reports what happened. `sno heartbeat --due` lists entries, `--due --problems`
+lists the ones that did not run as planned, and `sno heartbeat --due-cancel <record> [<do text>]`
+removes one.
+
 ## The one rule
 
 **The tick is guaranteed to happen. Being told is not — you have to attach a reader.**
