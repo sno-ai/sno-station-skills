@@ -15,7 +15,12 @@
     "--stop",
     "--list",
     "--help",
-    "-h"
+    "-h",
+    "--due",
+    "--problems",
+    "--due-set",
+    "--due-cancel",
+    "--due-tick"
   ],
   "endings": [
     "FINISHED",

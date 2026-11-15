@@ -38,6 +38,69 @@ plain_brief() {
 }
 if [[ "${2:-}" == plain-brief ]]; then plain_brief; printf '1..%s\n' "$count"; exit 0; fi
 
+non_git() {
+    local directory="$root/non-git directory" record="$root/nogit.md" status
+    mkdir -p -- "$directory/child"
+    status="$(cd -- "$directory" && CLAUDE_SESSION_ID=claude-outside-git run "$record")"
+    [[ "$status" == 0 ]] || fail "outside git create exits 0 (got $status)"
+    grep -qxF "checkout: $directory" "$record" || fail 'outside git records the resolved directory'
+    grep -qx 'branch: none' "$record" && grep -qx 'head: none' "$record" || fail 'outside git records no branch or head'
+    [[ "$(sed -n '/^recent:$/,/^session-id:/p' "$record")" == $'recent:\nuncommitted:\nruntime: claude-code\nsession-id: claude-outside-git' ]] || fail 'outside git lists no git state and keeps the Claude identity'
+    status="$(run --repo "$directory/child/.." "$record")"
+    [[ "$status" == 0 ]] && grep -qx 'checkpoint: 2' "$record" || fail 'outside git refresh increments the checkpoint'
+    grep -qxF "checkout: $directory" "$record" && grep -qx 'runtime: claude-code' "$record" && grep -qx 'session-id: claude-outside-git' "$record" || fail 'outside git --repo resolves the directory and refresh preserves identity'
+    status="$(run --verify "$record")"
+    [[ "$status" == 0 && "$(cat "$root/out")" == 'No git state to compare.' && "$(wc -l <"$root/out")" -eq 1 && ! -s "$root/err" ]] || fail 'outside git verify exits 0 with one explanatory line'
+    ok 'outside git create, refresh and verify preserve the directory and session identity'
+}
+
+locked_write() {
+    (
+        local record="$root/locked.md" lock_fd writer status=0
+        new_repo locked-work
+        "$command_path" --repo "$repo" "$record" >/dev/null
+        cp -- "$record" "$root/locked-before"
+        exec {lock_fd}>"$record.lock"
+        flock -x "$lock_fd"
+        "$command_path" --repo "$repo" "$record" >"$root/locked-out" 2>"$root/err" {lock_fd}>&- &
+        writer=$!
+        trap 'kill "$writer" 2>/dev/null || :; wait "$writer" 2>/dev/null || :' EXIT
+        sleep 0.5
+        kill -0 "$writer" 2>/dev/null && [[ ! -s "$root/locked-out" ]] && cmp -s "$root/locked-before" "$record" || fail 'checkpoint waits without writing while FILE.lock is held'
+        cp -- "$record" "$root/runner-update"
+        printf '\n## Due\ndo: write the daily report\nlast: 2026-11-15 started, result done\n' >>"$root/runner-update"
+        mv -- "$root/runner-update" "$record"
+        outside "$record" >"$root/locked-outside"
+        flock -u "$lock_fd"
+        exec {lock_fd}>&-
+        wait "$writer" || status=$?
+        [[ "$status" == 0 ]] && grep -qx 'checkpoint: 2' "$record" || fail 'checkpoint finishes after the lock is released'
+        cmp -s "$root/locked-outside" <(outside "$record") || fail 'checkpoint keeps all text another writer renamed in while it waited'
+    )
+    ok 'checkpoint waits for FILE.lock and preserves the other writer update'
+}
+
+without_flock() {
+    local repo status
+    new_repo no-flock-work
+    # Without flock, the same write and verification work without a lock file.
+    mkdir -- "$root/no-flock-bin"
+    for tool in bash git dirname realpath stat sha256sum cut grep sed head date mktemp rm chmod awk cat mv sort; do
+        ln -s -- "$(command -v "$tool")" "$root/no-flock-bin/$tool"
+    done
+    status="$(PATH="$root/no-flock-bin" run --repo "$repo" "$root/no-flock.md")"
+    [[ "$status" == 0 && ! -e "$root/no-flock.md.lock" ]] || fail 'without flock a record is written without a lock file'
+    status="$(PATH="$root/no-flock-bin" run --verify "$root/no-flock.md")"
+    [[ "$status" == 0 ]] && grep -qx MATCH "$root/out" || fail 'without flock the git record verifies normally'
+    ok 'write and verify work when flock is absent'
+}
+
+outside() { sed '/<!-- machine-record:start -->/,/<!-- machine-record:end -->/d' "$1"; }
+if [[ "${2:-}" == non-git ]]; then non_git; printf '1..%s\n' "$count"; exit 0; fi
+if [[ "${2:-}" == locked-write ]]; then locked_write; printf '1..%s\n' "$count"; exit 0; fi
+
+if [[ "${2:-}" == no-flock ]]; then without_flock; printf '1..%s\n' "$count"; exit 0; fi
+
 # usage
 mkdir -p -- "$root/empty"
 status="$(cd -- "$root/empty" && run)"
@@ -75,7 +138,6 @@ t = t.replace("## Done\n", "## Done\n- step one finished, proof in proof/1.log\n
 t = t.replace("## Next\n", "## Next\n1. write the report\n2. run the checks\n", 1)
 p.write_text(t)
 PY
-outside() { sed '/<!-- machine-record:start -->/,/<!-- machine-record:end -->/d' "$1"; }
 outside "$record" >"$root/outside-before"
 git_ add -A
 git_ commit -q -m 'second commit'
@@ -95,6 +157,7 @@ inside="$repo/progress-inside.md"
 status="$(run --verify "$inside")"
 [[ "$status" == 0 ]] && grep -qx 'MATCH' "$root/out" || fail 'a record inside the checkout does not cause drift'
 rm -f -- "$inside"
+rm -f -- "$inside.lock"
 ok 'record inside the checkout is not counted as uncommitted work'
 
 # verify: MATCH, then each kind of drift
@@ -132,9 +195,11 @@ status="$(run --verify "$root/missing.md")"
 printf 'no markers here\n' >"$root/plain.md"
 status="$(run --verify "$root/plain.md")"
 [[ "$status" == 2 && "$(wc -l <"$root/err")" -eq 1 ]] || fail 'a file without the record markers exits 2 with one line'
-status="$(cd -- "$root/empty" && run "$root/nogit.md")"
-[[ "$status" == 2 && "$(wc -l <"$root/err")" -eq 1 && ! -e "$root/nogit.md" ]] || fail 'outside a git work tree it exits 2 and writes nothing'
 ok 'unusable input exits 2 with one line'
+non_git
+locked_write
+
+without_flock
 
 # Default session location and exact vendor identity share the existing record format.
 profile="$root/profile"
