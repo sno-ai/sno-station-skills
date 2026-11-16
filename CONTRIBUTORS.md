@@ -6,3 +6,4 @@ list records whose change it was.
 
 | Contributor | What was adopted |
 |---|---|
+| [@anhaoXie](https://github.com/anhaoXie) | README: the standalone plugin holds 12 skills, not 7 ([#28](https://github.com/sno-ai/sno-station-skills/pull/28)) |
