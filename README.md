@@ -1,4 +1,4 @@
-# Sno Station Skills: Smart agents. Senior habits.
+# Sno: Smart agents. Senior habits. Better every day.
 
 ![Sno Station — Agents, assemble. Two heads are better than one, and smarter by morning.](https://raw.githubusercontent.com/sno-ai/sno-station/main/docs/images/hero-banner.png)
 
