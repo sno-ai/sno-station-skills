@@ -7,3 +7,4 @@ list records whose change it was.
 | Contributor | What was adopted |
 |---|---|
 | [@anhaoXie](https://github.com/anhaoXie) | README: the standalone plugin holds 12 skills, not 7 ([#28](https://github.com/sno-ai/sno-station-skills/pull/28)) |
+| [@bfs2021](https://github.com/bfs2021) | `fence-check.sh --help` prints only its comment header, and the help test checks every script for leaked code ([#27](https://github.com/sno-ai/sno-station-skills/pull/27)) |
