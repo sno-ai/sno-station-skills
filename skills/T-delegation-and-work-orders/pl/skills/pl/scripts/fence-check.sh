@@ -14,7 +14,7 @@
 # Exit: 0 PASS · 3 VIOLATION (paths listed) · 2 usage/missing input.
 set -euo pipefail
 case "${1:-}" in
-  -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,/^set -euo pipefail$/p' "$0" | sed '$d;s/^# \{0,1\}//'; exit 0 ;;
 esac
 shopt -s extglob globstar nullglob
 
