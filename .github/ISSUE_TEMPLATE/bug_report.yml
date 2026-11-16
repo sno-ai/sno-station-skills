@@ -1,0 +1,56 @@
+name: Bug report
+description: A skill does not do what its SKILL.md or the README says it does.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks. Please do not paste credentials, private host names, or session text you would not want public.
+  - type: input
+    id: skill
+    attributes:
+      label: Skill
+      description: The skill's name, for example `peer-review` or `rotate-agent`.
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      options:
+        - Claude Code
+        - Codex
+        - Cursor
+        - Hermes Agent
+        - OpenClaw
+        - More than one
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `sno --version`, or the release tag or commit of this repository if you copied the skill by hand.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: What you said to the agent or the command you ran. The smallest sequence that shows the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Paste error text as text, not as a screenshot. Redact anything private.
+      render: text
+    validations:
+      required: true

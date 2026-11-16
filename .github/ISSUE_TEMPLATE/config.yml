@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question, or show what you built
+    url: https://github.com/sno-ai/sno-station-skills/discussions
+    about: Ask how a skill works, or show how you use one. Discussions, not issues.
+  - name: A problem with sno itself (install, memory, Reach, timed tasks)
+    url: https://github.com/sno-ai/sno-station/issues/new/choose
+    about: The programs the skills call live in sno-ai/sno-station. Report those there.
+  - name: Security vulnerability
+    url: https://github.com/sno-ai/sno-station-skills/blob/main/SECURITY.md
+    about: Never file a security problem as a public issue. Email security@sno.ai.
