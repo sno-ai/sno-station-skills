@@ -1,0 +1,50 @@
+# Sno Station Skills
+
+> 39 open-source agent skills, shipped as 30 units, that make the AI coding agents a developer already
+> runs (Claude Code and Codex first) work as one team: review by a different agent in a fresh session,
+> handover to another agent before a usage limit stops the work, work orders whose success checks are
+> proven by a real run, a one-page brief when the person comes back, and a nightly run that proposes
+> skill changes a person approves. Each skill is a plain-text SKILL.md with its scripts. Apache-2.0.
+
+These are the skills Sno Station (https://github.com/sno-ai/sno-station) installs. Sno Station is the
+workstation they run on: the shared memory, agent-to-agent messaging (Sno Reach), timed tasks (Finish)
+and the `sno` command the skills call.
+
+## Read first
+
+- README.md — what the skills do, how to install all of them or one, real stories from our own machines, the full catalog
+- skills/README.md — the category index with one line per unit
+- CONTRIBUTING.md — how a change is taken, the one check to run, DCO sign-off
+- registry.yaml — unit to category code
+
+## Install
+
+- All skills: tell an agent "install sno.ai from GitHub", or run `curl -fsSL https://sno.ai/install | sh`, then `sno setup`
+- Claude Code plugin: `claude plugin marketplace add sno-ai/sno-station-skills`, then `claude plugin install sno-station@sno-ai`
+- Codex plugin: `codex plugin marketplace add sno-ai/sno-station-skills`, then `codex plugin add sno-station@sno-ai`
+- Only the skills that run without Sno Station: the `sno-station-standalone@sno-ai` plugin
+
+## Directory map
+
+- skills/<category>/<unit>/skill/ — one skill: SKILL.md, references/, scripts/
+- skills/<category>/<unit>/skills/<member>/ — a family of skills that ship together
+- skills/<category>/<unit>/overlay/claude|codex/ — per-agent differences
+- skills/<category>/<unit>/public-bin/ — one file per `sno <name>` command the skill provides
+- plugins/, .claude-plugin/, .codex-plugin/ — generated plugin packaging; do not edit by hand
+- scripts/ — build, check and release scripts
+
+## Categories (the letter is in the directory name)
+
+- J Peer Review & Audit — peer-review, cross-vendor-security-audit, test-writer, less-is-more, agentic-walkthrough, owner-intent-audit, first-principles-review, e2e (environment preflight and red triage)
+- M Build & Rollout — codex-coder, python-coder, rust-coder, shellscript-coder, ts-coder, sno-cli, medic
+- S Communication & Handoff — reach, tag-team, handoff, rotate-agent, heartbeat, join-talk, subscription-quota-check
+- H Reporting & Visibility — away-brief, catch-report, agentic-time-estimate
+- T Delegation & Work Orders — charter, deliver, pl (project lead family), cos (chief of staff family)
+- R Retrospective & Improvement — rem-reflect (Self Learning)
+
+## Related
+
+- https://github.com/sno-ai/sno-station — the workstation; docs/sno-commands.md lists every `sno` command
+- https://github.com/sno-ai/sno-station/blob/main/apps/reach/README.md — Sno Reach, agent messaging
+- https://github.com/sno-ai/sno-station/blob/main/docs/finish.md — Finish, timed tasks
+- https://sno.ai — website

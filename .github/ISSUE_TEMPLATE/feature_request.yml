@@ -1,0 +1,40 @@
+name: Skill idea or request
+description: A habit your agents should have and do not yet, or a change to a skill here.
+title: "[Idea] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: "If we build your idea, the commit is yours: you are its author and appear in our contributor list."
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What goes wrong with your agents today, or what do you do by hand that a skill should do?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like to see
+      description: A new skill, or a change to one here. Name the skill if there is one.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Peer review and audit
+        - Build and rollout
+        - Communication and handoff
+        - Reporting and visibility
+        - Delegation and work orders
+        - Retrospective and improvement
+        - install / plugins
+        - docs
+        - other
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
