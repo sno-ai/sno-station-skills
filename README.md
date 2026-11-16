@@ -1,13 +1,168 @@
-# Sno Station Skills — The working habits of a real team, installed into your AI agents.
+# Sno Station Skills: 39 skills that make Claude Code and Codex work as one team
 
 ![Sno Station — Agents, assemble. Two heads are better than one, and smarter by morning.](https://raw.githubusercontent.com/sno-ai/sno-station/main/docs/images/hero-banner.png)
 
+**The working habits of a real engineering team, written as skills your AI agents follow.** One agent builds and a different agent reviews. Before one runs out of quota, it writes a handover and wakes another to continue from the exact commit. "Done" has to be proven by a real run. What you correct today is proposed as a rule for their skills tonight, and you approve what stays.
+
+Every skill is plain text you can read, copy and change. These are the skills [Sno Station](https://github.com/sno-ai/sno-station) installs into the agents you already run, and the ones we use every day to build it.
+
+[![GitHub stars](https://img.shields.io/github/stars/sno-ai/sno-station-skills?label=stars&color=eab308&labelColor=3b3b3b)](https://github.com/sno-ai/sno-station-skills/stargazers)
+[![latest release](https://img.shields.io/github/v/release/sno-ai/sno-station-skills?label=release&color=2dd4bf&labelColor=3b3b3b)](https://github.com/sno-ai/sno-station-skills/releases/latest)
 [![license Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-97ca00.svg?labelColor=3b3b3b)](LICENSE)
 ![39 skills in 30 units](https://img.shields.io/badge/skills-39%20in%2030%20units-2dd4bf.svg?labelColor=3b3b3b)
 ![self-tested before every release](https://img.shields.io/badge/every%20release-self--tested-3b82f6.svg?labelColor=3b3b3b)
 ![agents Claude Code, Codex](https://img.shields.io/badge/agents-Claude%20Code%20%C2%B7%20Codex-f0a04b.svg?labelColor=3b3b3b)
 
-Find out more on our website, [sno.ai](https://sno.ai).
+To get all 39, tell your agent:
+
+```text
+install sno.ai from GitHub
+```
+
+Your agent installs Sno Station and sets up every skill, plus the programs they call, for the supported agents it finds on your computer. Then try one:
+
+```text
+peer-review this
+```
+
+A different agent reads your change in a fresh session that never saw the conversation, and reports what would break in real use. [Want only one skill, or a plugin?](#install)
+
+**New here?** These skills are half of the picture. The other half is [Sno Station](https://github.com/sno-ai/sno-station), the workstation they run on: agents that [message each other](https://github.com/sno-ai/sno-station/blob/main/apps/reach/README.md), [work that starts at a set time](https://github.com/sno-ai/sno-station/blob/main/docs/finish.md), and one memory they all share.
+
+[What changes for you](#what-changes-for-you) · [Why these skills](#why-these-skills) · [The pain, and what fixes it](#the-pain-and-what-fixes-it) · [Stories from our own machine](#i-went-to-bed-they-changed-shifts) · [Install](#install) · [The skills](#the-skills) · [Built to be trusted](#built-to-be-trusted) · [These skills and Sno Station](#these-skills-and-sno-station) · [For skill authors](#for-skill-authors) · [License](#license)
+
+## What changes for you
+
+You keep working exactly as before, in whichever agent you like. Then:
+
+1. **You finish a change and want it checked.** Say "peer-review this". A reviewer from the other
+   vendor reads it cold, reports what would break in real use, and the author fixes the root
+   cause, round after round, until the review comes back clean.
+2. **You start a long run before bed.** Say "arm rotate-agent". If the working agent's quota
+   drops to the threshold overnight, it hands the task to a fresh agent from the other vendor,
+   with the brief verified before a single file is touched.
+3. **You want it done at a set time.** Say the time: "check the build tomorrow at 9", or
+   "write the report every morning at 7". An agent starts at that time and does it, with the
+   conversation open or closed. `sno heartbeat --due` shows what is scheduled. This part of Sno
+   Station is called Finish; the [guide](https://github.com/sno-ai/sno-station/blob/main/docs/finish.md)
+   has the details.
+4. **You come back.** Say "away brief". One page, at most 60 lines: what got done, what is
+   stuck and why, what waits for your answer, and what it cost in quota.
+5. **You have a job for someone else.** Say "write a charter". You get one file that says what
+   to deliver, what is out of bounds, what you already decided, and how each success check will
+   be proven. Any agent can then `deliver` it, and every check is proven by a recorded real run.
+6. **Every night, the team looks back.** The nightly loop reads the day's Claude Code and Codex
+   sessions, finds the mistakes that repeat, and proposes lessons and skill changes. In the
+   morning you accept the ones you like with `sno rem-reflect accept <id>`. Nothing changes
+   without that accept.
+
+## Why these skills
+
+One AI agent is a brilliant new hire with no colleagues. It reviews its own work, so it misses
+what it cannot see. It stops dead when its quota runs out, at 3 a.m., halfway through your
+build. It says "done" when the tests are green and nothing actually happened. It builds three
+layers of machinery you never asked for. And tomorrow it makes the same mistake it made today,
+because nobody told it otherwise.
+
+**Sno Station Skills fixes the team, not the model.** These are the skills
+[Sno Station](https://github.com/sno-ai/sno-station) installs into the agents you already
+run. They give Claude Code and Codex the habits every good engineering team has: a second pair
+of eyes from a different vendor, a clean handover when someone has to leave, a lead who hands
+out work with a written definition of done, a one-page brief when you come back, and a
+retrospective every night that turns this week's mistakes into next week's rules.
+
+**Two agents, different roles.** One agent carries out your task. The other reviews the result
+against your requirements. Claude Code and Codex can take either role. When both are installed,
+the review runs in the other one, in a fresh session with none of the author's conversation.
+The agents exchange findings and corrections between themselves.
+
+**Work that finishes while you sleep.** Arm it before bed, and when the working agent's
+subscription runs low it writes a handover brief while it still can, wakes an agent from the
+other vendor, and hands the task over with the exact commit to continue from. Your build does not care which vendor finished it.
+
+**"Done" means proven.** Every task can carry a written list of success checks, each one
+answered pass or fail by a real run. Nothing counts as done because an agent said so.
+
+**Tested before it ships.** Every skill in a release passed its own self-tests on a clean copy,
+was scanned for personal paths and leftovers, and carries a stamp that says so. A skill that
+fails is not published.
+
+![How it works: two agents, one shared workspace, three things you get](https://raw.githubusercontent.com/sno-ai/sno-station/main/docs/images/squad-how-it-works.png)
+
+**Star it now. The next time an agent stalls on you at 2 a.m., you will want to know where this was.**
+
+## The pain, and what fixes it
+
+*Last updated 2026-10-23.* Every line in the left column is a real complaint from r/ClaudeCode, r/codex or r/ClaudeAI in the week of October 20, 2026. The right column is what runs on our own machines, free and open source, to make it stop.
+
+| What people said this week | What fixes it | Where |
+|---|---|---|
+| “Ran out of my 5-hour limit within 30 minutes.” | Stop sending the biggest model to do everything. Opus plans and reviews; Codex writes the code, called as an agent from the same session. When one subscription runs dry, the other picks the task up from the same memory. | `codex-coder`, `sno reach call` |
+| “Lost 10 hours of overnight work to ‘this model is at capacity’.” | At 2% of its quota the working agent writes a handover brief and wakes the other vendor's agent, which continues from the exact commit. You were asleep. | `rotate-agent` |
+| “1,100 files, 30,000 lines. I don't have the token budget to review their PRs.” | Whoever pushes, reviews first: the author runs a review by the other vendor, in a fresh session that never saw the conversation, and fixes what comes back before anyone else looks. | `peer-review` |
+| “A reviewer subagent checked every commit for two weeks. 86 runs, it stopped exactly one.” | A harness reviewing itself finds nothing real. The reviewer is always a different model in a different harness, with none of the author's chat. | `peer-review` |
+| “Codex never finishes a review.” | Hard caps written into the skill: 3 rounds on code, 5 on a plan, 1 on tests, then it stops and waits for a person. A run that has written nothing for 15 minutes is killed as stalled. | `peer-review`, `codex-coder`, `heartbeat` |
+| “Codex treats every byte like a criminal.” | Speculative safeguards, blockers and hashes are the first thing the review deletes. Nothing goes in without an observed failure asking for it. | `less-is-more` |
+| “When Claude says it won't change something, is that reason stored anywhere Codex reads next time?” | Every finding is filed once, with a status only a human sets. A finding raised again updates its row instead of coming back as new, and earlier rulings are handed to the next review. | `peer-review` findings ledger |
+| “It said done. Nothing happened.” | A task carries a written list of success checks, each answered pass or fail by a real run. An agent saying “done” counts for nothing. | `pl` work orders |
+| “Tomorrow it makes the same mistake it made today.” | Every night a separate model reads the day's sessions, turns your corrections into one-line lessons, and you approve what stays. The bottleneck is us. | Self Learning (`R` skills) |
+| “Half my subagents were glorified one-liners with a fresh context window.” | Procedures live in skills, not subagents. Two agents remain, for plan and execution, and for review, because those two splits are the ones that pay. | the whole set |
+
+Each skill in the right column is in this repository, free to copy into your own agents. The memory they share, the quota watch that fires the handover, and the nightly run that writes the lessons live in [Sno Station](https://github.com/sno-ai/sno-station); install that and every skill here comes with it, so you get the whole experience at once.
+
+## I went to bed. They changed shifts.
+
+*From Sno Station's own repository, the night of 2026-09-18.*
+
+![The quota watch reading down to the threshold every five minutes, and the handover firing at 2%](https://raw.githubusercontent.com/sno-ai/sno-station/main/docs/evidence/rotation-quota-watch-2026-09-18.png)
+
+One of our agents was deep into a long build when its weekly quota ran almost out. It did not
+stop and wait. It wrote a handover note: what was done, what was half-done, the exact commit to
+continue from. Then it woke a different agent.
+
+One thing went wrong, and it is the part worth reading. The new agent started editing before it
+had confirmed the handover. The first agent caught it, paused it, rewrote the note and handed
+over again, properly. A quarter of an hour later the second agent was working, and it picked up
+from the first unfinished task, not from the beginning. We were asleep for all of it.
+
+That night ran on four skills that ship here: `subscription-quota-check` read the quota
+without spending it, `heartbeat` took a reading every five minutes, `rotate-agent` decided when
+and to whom, and `handoff` moved the work. Every quota reading, both versions of the note and
+the commits are published in
+[Sno Station's evidence folder](https://github.com/sno-ai/sno-station/tree/main/docs/evidence/rotation-2026-09-18).
+
+## The other one sees what the first one can't.
+
+Ask either agent to `peer-review` the other's work. The reviewer always works in a fresh session
+that never saw the conversation, and it is a different agent whenever you have two. A review
+does not always find a problem. It keeps finding the ones the author could not see, because an
+agent reviewing itself brings the same habits it wrote the code with.
+
+One case we published: three passes by one agent missed a known high-severity bug or set it
+aside, and one reread by the other sent it back. The record is under
+[cross-vendor-security-audit](#cross-vendor-security-audit--a-security-audit-that-rereads-what-it-threw-away).
+
+`catch-report` puts numbers on it: how many problems the second agent caught, next to how many
+the agents caught in their own work, kept apart and never added together.
+
+## I yelled at my agent last night. It took notes.
+
+You correct an agent today. Tonight the `rem-reflect` skill reads the day's sessions, finds the
+mistakes that keep repeating, and proposes changes to the agents' own skills. In the morning you
+approve the ones you want with `sno rem-reflect accept <id>`. Nothing changes without that accept.
+
+![Self Learning reporting what it learned and changed, 2026-09-18](https://raw.githubusercontent.com/sno-ai/sno-station/main/docs/evidence/rsi-self-repair-2026-09-18.png)
+
+That is a real report from our own machine. Two things the owner had been frustrated about that evening
+were rules in the live skills by the next morning, after the owner accepted them. Nobody typed
+them in.
+
+The next day it checked its own homework.
+
+![The next morning: Self Learning measures whether yesterday's own changes helped, 2026-09-19](https://raw.githubusercontent.com/sno-ai/sno-station/main/docs/evidence/rsi-skill-impact-2026-09-19.png)
+
+It looked at the three skills it had changed the day before. The two that had been used again
+showed no failures, and the third had not been used yet.
 
 ## Install
 
@@ -87,127 +242,6 @@ codex plugin add sno-station@sno-ai
 
 `sno-station` holds all 39 skills; most of them call Sno Station programs, so install Sno Station too.
 For only the 7 skills that run without Sno Station, install `sno-station-standalone@sno-ai` instead.
-
-[Install](#install) · [What changes for you](#what-changes-for-you) · [Why these skills](#why-these-skills) · [The pain, and what fixes it](#the-pain-and-what-fixes-it) · [Stories from our own machine](#i-went-to-bed-it-changed-shifts) · [The skills](#the-skills) · [Built to be trusted](#built-to-be-trusted) · [For skill authors](#for-skill-authors) · [License](#license)
-
-## What changes for you
-
-You keep working exactly as before, in whichever agent you like. Then:
-
-1. **You finish a change and want it checked.** Say "peer-review this". A reviewer from the other
-   vendor reads it cold, reports what would break in real use, and the author fixes the root
-   cause, round after round, until the review comes back clean.
-2. **You start a long run before bed.** Say "arm rotate-agent". If the working agent's quota
-   drops to the threshold overnight, it hands the task to a fresh agent from the other vendor,
-   with the brief verified before a single file is touched.
-3. **You want it done at a set time.** Say the time: "check the build tomorrow at 9", or
-   "write the report every morning at 7". An agent starts at that time and does it, with the
-   conversation open or closed. `sno heartbeat --due` shows what is scheduled. This part of Sno
-   Station is called Finish; the [guide](https://github.com/sno-ai/sno-station/blob/main/docs/finish.md)
-   has the details.
-4. **You come back.** Say "away brief". One page, at most 60 lines: what got done, what is
-   stuck and why, what waits for your answer, and what it cost in quota.
-5. **You have a job for someone else.** Say "write a charter". You get one file that says what
-   to deliver, what is out of bounds, what you already decided, and how each success check will
-   be proven. Any agent can then `deliver` it, and every check is proven by a recorded real run.
-6. **Every night, the team looks back.** The nightly loop reads the day's Claude Code and Codex
-   sessions, finds the mistakes that repeat, and proposes lessons and skill changes. In the
-   morning you accept the ones you like with `sno rem-reflect accept <id>`. Nothing changes
-   without that accept.
-
-## Why these skills
-
-One AI agent is a brilliant new hire with no colleagues. It reviews its own work, so it misses
-what it cannot see. It stops dead when its quota runs out, at 3 a.m., halfway through your
-build. It says "done" when the tests are green and nothing actually happened. It builds three
-layers of machinery you never asked for. And tomorrow it makes the same mistake it made today,
-because nobody told it otherwise.
-
-**Sno Station Skills fixes the team, not the model.** These are the skills
-[Sno Station](https://github.com/sno-ai/sno-station) installs into the agents you already
-run. They give Claude Code and Codex the habits every good engineering team has: a second pair
-of eyes from a different vendor, a clean handover when someone has to leave, a lead who hands
-out work with a written definition of done, a one-page brief when you come back, and a
-retrospective every night that turns this week's mistakes into next week's rules.
-
-**Dual Brain: different roles, one team.** One agent carries out your task. The other reviews
-the result against your requirements. Claude Code and Codex can take either role. When both
-CLIs are installed, the review runs in the other vendor's CLI, in a fresh session with none of
-the author's conversation. The agents exchange findings and corrections. Add more roles, and
-you have an Agent Squad.
-
-**Work that finishes while you sleep.** Arm it before bed, and when the working agent's
-subscription runs low it writes a handover brief while it still can, wakes an agent from the
-other vendor, and hands the task over with the exact commit to continue from. Your build does not care which vendor finished it.
-
-**"Done" means proven.** Every task can carry a written list of success checks, each one
-answered pass or fail by a real run. Nothing counts as done because an agent said so.
-
-**Tested before it ships.** Every skill in a release passed its own self-tests on a clean copy,
-was scanned for personal paths and leftovers, and carries a stamp that says so. A skill that
-fails is not published.
-
-![How it works: two agents, one shared workspace, three things you get](https://raw.githubusercontent.com/sno-ai/sno-station/main/docs/images/squad-how-it-works.png)
-
-## The pain, and what fixes it
-
-*Last updated 2026-10-23.* Every line in the left column is a real complaint from r/ClaudeCode, r/codex or r/ClaudeAI in the week of October 20, 2026. The right column is what runs on our own machines, free and open source, to make it stop.
-
-| What people said this week | What fixes it | Where |
-|---|---|---|
-| “Ran out of my 5-hour limit within 30 minutes.” | Stop sending the biggest model to do everything. Opus plans and reviews; Codex writes the code, called as an agent from the same session. When one subscription runs dry, the other picks the task up from the same memory. | `codex-coder`, `sno reach call` |
-| “Lost 10 hours of overnight work to ‘this model is at capacity’.” | At 2% of its quota the working agent writes a handover brief and wakes the other vendor's agent, which continues from the exact commit. You were asleep. | `rotate-agent` |
-| “1,100 files, 30,000 lines. I don't have the token budget to review their PRs.” | Whoever pushes, reviews first: the author runs a review by the other vendor, in a fresh session that never saw the conversation, and fixes what comes back before anyone else looks. | `peer-review` |
-| “A reviewer subagent checked every commit for two weeks. 86 runs, it stopped exactly one.” | A harness reviewing itself finds nothing real. The reviewer is always a different model in a different harness, with none of the author's chat. | `peer-review` |
-| “Codex never finishes a review.” | Hard caps written into the skill: 3 rounds on code, 5 on a plan, 1 on tests, then it stops and waits for a person. A run that has written nothing for 15 minutes is killed as stalled. | `peer-review`, `codex-coder`, `heartbeat` |
-| “Codex treats every byte like a criminal.” | Speculative safeguards, blockers and hashes are the first thing the review deletes. Nothing goes in without an observed failure asking for it. | `less-is-more` |
-| “When Claude says it won't change something, is that reason stored anywhere Codex reads next time?” | Every finding is filed once, with a status only a human sets. A finding raised again updates its row instead of coming back as new, and earlier rulings are handed to the next review. | `peer-review` findings ledger |
-| “It said done. Nothing happened.” | A task carries a written list of success checks, each answered pass or fail by a real run. An agent saying “done” counts for nothing. | `pl` work orders |
-| “Tomorrow it makes the same mistake it made today.” | Every night a separate model reads the day's sessions, turns your corrections into one-line lessons, and you approve what stays. On our own machine: 162 written so far, 7 approved. The bottleneck is us. | Self Learning (`R` skills) |
-| “Half my subagents were glorified one-liners with a fresh context window.” | Procedures live in skills, not subagents. Two agents remain, for plan and execution, and for review, because those two splits are the ones that pay. | the whole set |
-
-Each skill in the right column is in this repository, free to copy into your own agents. The memory they share, the quota watch that fires the handover, and the nightly run that writes the lessons live in [Sno Station](https://github.com/sno-ai/sno-station); install that and every skill here comes with it, so you get the whole experience at once.
-
-## "I went to bed. It changed shifts."
-
-*From Sno Station's own repository, 2026-09-18.*
-
-![The quota watch reading down to the threshold every five minutes, and the handover firing at 2%](https://raw.githubusercontent.com/sno-ai/sno-station/main/docs/evidence/rotation-quota-watch-2026-09-18.png)
-
-One of our agents was twenty-one tasks into a twenty-seven-task build when its weekly quota
-reached 2%. It did not wait to die. It wrote a handover brief: what was done, what was
-half-done, the exact commit to continue from. Then it woke an agent from the other vendor and
-would not let it touch anything until the brief was verified. Fourteen minutes and forty-one
-seconds after the handover began, the second agent was working and the first signed off with
-1% left. The second agent continued from the first unchecked task, not from the beginning.
-
-That night ran on the same four skills that ship here: `subscription-quota-check` read the quota
-without spending it, `heartbeat` took a reading every five minutes, `rotate-agent` decided when
-and to whom, and `handoff` moved the work. Every quota reading, both versions of the brief and
-the commit summary are published in
-[Sno Station's evidence folder](https://github.com/sno-ai/sno-station/tree/main/docs/evidence/rotation-2026-09-18).
-
-## "In months, the other one has never once said 'looks good.'"
-
-Claude Code has reviewed Codex's work, and Codex has reviewed Claude Code's, on Sno Station's
-own repository for months. Not one review has come back empty. We used to think that meant the
-work was bad. It means one reviewer from one vendor is never enough.
-
-That is what `peer-review` is for, and `catch-report` puts numbers on it: how many problems the
-second model caught, next to how many the agents caught in their own work, kept apart and never
-added together.
-
-## "I yelled at my agent last night. It took notes."
-
-![The nightly loop reporting what it learned and changed, 2026-09-18](https://raw.githubusercontent.com/sno-ai/sno-station/main/docs/evidence/rsi-self-repair-2026-09-18.png)
-
-The nightly loop is the `rem-reflect` skill. On its first night on our machine, the two things
-the owner had been frustrated about that evening were rules in the live skills by morning,
-after the owner accepted them; nobody typed them in. The next night it fired on its own at
-00:58, read 113 sessions, and measured the three skills it had changed the day before: failures
-in all three had dropped to zero.
-
-![The next morning: the loop measures whether yesterday's own changes helped, 2026-09-19](https://raw.githubusercontent.com/sno-ai/sno-station/main/docs/evidence/rsi-skill-impact-2026-09-19.png)
 
 ## The skills
 
@@ -612,9 +646,28 @@ Every unit in a release passed the same checks before it was published:
 6. a stamp, `PUBLISHED.json`, is written last with the self-test count and digests of the
    contract and the payload.
 
-A skill that fails a check is not published. The stamp is written by the publish step, never by
+A skill that fails a check is not published. The stamp is written by the release build, never by
 hand. All skill text is in English, and your agent follows it in whatever language you talk to
 it in.
+
+## These skills and Sno Station
+
+The skills are the habits. [Sno Station](https://github.com/sno-ai/sno-station) is the workstation that runs them: the memory
+they share, the quota watch that fires a handover, the messages between agents and the nightly
+run that writes the lessons. Install Sno Station and every skill here comes with it.
+
+| You want | Go here |
+|---|---|
+| The whole workstation, and what runs on which agent today | [sno-ai/sno-station](https://github.com/sno-ai/sno-station#what-you-can-use-today-and-where-it-stops) |
+| Agents that message each other, across windows and computers | [Sno Reach](https://github.com/sno-ai/sno-station/blob/main/apps/reach/README.md) |
+| Work that starts at a time you name | [Finish](https://github.com/sno-ai/sno-station/blob/main/docs/finish.md) |
+| Every `sno` command the skills call | [Command reference](https://github.com/sno-ai/sno-station/blob/main/docs/sno-commands.md) |
+| The raw records behind the stories above | [Evidence folder](https://github.com/sno-ai/sno-station/tree/main/docs/evidence) |
+| To ask something, or show what you built | [Discussions](https://github.com/sno-ai/sno-station-skills/discussions) |
+| A small first change to make | [Good first issues](https://github.com/sno-ai/sno-station-skills/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) and [CONTRIBUTING.md](CONTRIBUTING.md) |
+
+**And star both repositories.** We build Sno Station with these skills. What our own night
+shifts teach us ships here, release after release.
 
 ## For skill authors
 
