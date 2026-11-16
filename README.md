@@ -242,7 +242,7 @@ codex plugin add sno-station@sno-ai
 ```
 
 `sno-station` holds every skill; most of them call Sno Station programs, so install Sno Station too.
-For only the 7 skills that run without Sno Station, install `sno-station-standalone@sno-ai` instead.
+For only the 12 skills that run without Sno Station, install `sno-station-standalone@sno-ai` instead.
 
 ## The skills
 
