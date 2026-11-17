@@ -1,5 +1,7 @@
 # Sno: Smart agents. Senior habits. Better every day.
 
+**Read in other languages:** **English** · [中文](docs/readme/README.zh-CN.md) · [Deutsch](docs/readme/README.de.md) · [Español](docs/readme/README.es.md) · [Français](docs/readme/README.fr.md) · [Русский](docs/readme/README.ru.md) · [한국어](docs/readme/README.ko.md) · [日本語](docs/readme/README.ja.md) · [繁體中文](docs/readme/README.zh-TW.md)
+
 ![Sno Station — Agents, assemble. Two heads are better than one, and smarter by morning.](https://raw.githubusercontent.com/sno-ai/sno-station/main/docs/images/hero-banner.png)
 
 **Your AI agents are brilliant new hires with no colleagues. These skills give them the habits of a team that has shipped before.** One agent builds and a different one reviews. Before one runs out of quota, it writes a handover and another picks up from the exact commit. Nobody gets to say "done" without a real run to prove it. And every night they look back at the day, and propose new rules for you to approve.
