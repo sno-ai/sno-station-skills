@@ -85,6 +85,7 @@ never assume that a familiar seat name identifies the right running agent.
 | `sno reach export --work <id> --output <file>` | Check full card bytes and an acceptance-to-terminal chain. | Write outside the state root and inspect Message-ID, References, recipient and state. |
 | `sno reach lint <card-file>` | Validate a proposed card before delivery. | Repair malformed headers or blank content before send; validation is not delivery. |
 | `sno reach remind --as <address>` | Show seen work that the current seat has not accepted. | Read the returned reminder; failure or timeout is not an empty successful reminder. |
+| `sno reach sent --as <address> [--work <id>] [--json]` | See what this seat sent and, per recipient, delivery, taker, acceptance and answer. | Wait only for the recipient shown as taker of a shared task card; a column with no record reads `unknown`. |
 
 ## Interpret a live call
 
@@ -128,6 +129,9 @@ A prompt echo alone is not the receiver's acknowledgment.
    inspect each result and its acceptance chain separately. Repeating an unfiltered wait or
    dismissing one answer does not advance to another recipient, because handled answers
    still match. Wait for a subset only when that subset was explicitly selected.
+   A task card with two or more To recipients has exactly one taker; the others are refused
+   and never answer. Find the taker with `sno reach sent --as <sender> --work <id>` and wait
+   for that recipient's terminal answer only.
 6. After reading incoming status and answer reports, dismiss those received report copies.
    This clears actionable pickup without replying or erasing history. Reading alone does
    not clear them, so an unfiltered wait can otherwise keep returning the same old report.
