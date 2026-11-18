@@ -55,7 +55,7 @@ def parse_frontmatter(text):
 
 
 ROOT = Path(__file__).resolve().parents[2]
-VERBS = set("spawn register unregister seats call watch ring send reply inbox wait dismiss log state flush init rebind doctor export lint remind".split())
+VERBS = set("spawn register unregister seats call watch ring send reply inbox wait dismiss log state flush init rebind doctor export lint remind sent".split())
 
 
 def require(pattern, text, rule):

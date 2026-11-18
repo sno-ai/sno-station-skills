@@ -87,6 +87,11 @@
     "lint": [],
     "remind": [
       "--as"
+    ],
+    "sent": [
+      "--as",
+      "--work",
+      "--json"
     ]
   },
   "reply_states": [
