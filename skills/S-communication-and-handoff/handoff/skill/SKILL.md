@@ -160,6 +160,12 @@ assumptions, Risks and open questions, plus Known failure, Report destination an
 The command never touches text outside the markers. Record settled decisions and exclusions,
 the exact unfinished action and expected result, the latest failed operation/target/error,
 the continuing report destination and any real card identity/recipient in these sections.
+Rewrite the sections you write in place so they state the current state, folding any earlier dated
+updates into them; never append dated updates.
+Keep those sections about one screen long, because the record is read back into the agent's context on
+every prompt; keep the objective, what is done with its current files, decisions, next action and
+latest failure, and leave the command-written block as it is. The step-by-step log belongs in the
+task's own report.
 
 With no file argument and a known native session identity, the command uses
 `<Sno profile>/station/handoff/<session-id>.md`; the Sno profile defaults to `~/.sno`.
