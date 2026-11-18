@@ -37,6 +37,22 @@ check() { # $1 label, rest: command
     fi
 }
 
+case_help() {
+    local script="$1" synopsis="$2" flag out
+    local err="$ROOT/help.err"
+    for flag in -h --help; do
+        out="$(STATS_FILE="$ROOT/no-ledger" CODEX_SESSIONS_DIR="$ROOT/no-sessions" \
+            bash "$script" "$flag" 2>"$err")" || return 1
+        [[ ! -s "$err" ]] || return 1
+        grep -Fq -- "$synopsis" <<<"$out" || return 1
+        if grep -qE '^#|set -Eeuo pipefail' <<<"$out"; then return 1; fi
+    done
+}
+check "receipt help shows usage without comment markers or shell code" \
+    case_help "$HERE/../review-receipt.sh" 'review-receipt.sh [--since <YYYY-MM-DD|today|all>] [--journey <id>] [--check]'
+check "backfill help shows usage without comment markers or shell code" \
+    case_help "$HERE/../review-backfill.sh" 'review-backfill.sh [--since <YYYY-MM-DD>] [--dry-run]'
+
 # ---- stub codex -----------------------------------------------------------
 # Honors --output-last-message so the wrapper's "did it produce anything?" check
 # is exercised for real rather than simulated.

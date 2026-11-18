@@ -25,7 +25,7 @@ while [ $# -gt 0 ]; do
         --since)   [ $# -ge 2 ] || { echo "review-backfill: --since needs a date" >&2; exit 2; }
                    since="$2"; shift 2 ;;
         --dry-run) dry=1; shift ;;
-        -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+        -h|--help) sed -n '1d; /^#/!q; s/^# \{0,1\}//p' "$0"; exit 0 ;;
         *) echo "review-backfill: unknown arg $1" >&2; exit 2 ;;
     esac
 done
