@@ -40,6 +40,15 @@ sed_i() { sed "$1" "$2" >"$2.new" && mv -- "$2.new" "$2"; }
 check() { # name expected-prefix actual
   if [[ "$3" == "$2"* ]]; then printf 'PASS %s\n' "$1"; else printf 'FAIL %s: got %q\n' "$1" "$3"; fail=1; fi
 }
+for script in "$WATCH" "$PREFLIGHT"; do
+  name="${script##*/}"
+  if "$script" --help >"$TMP/$name-help.out" 2>"$TMP/$name-help.err"; then rc=0; else rc=$?; fi
+  check "$name --help exits successfully" "0" "$rc"
+  check "$name --help prints usage to stdout" "usage: $name" "$(head -n1 "$TMP/$name-help.out")"
+  check "$name --help leaves stderr empty" "0" "$(wc -c <"$TMP/$name-help.err" | tr -d ' ')"
+  if "$script" --bad-option >/dev/null 2>&1; then rc=0; else rc=$?; fi
+  check "$name rejects an unknown option" "2" "$rc"
+done
 export QUOTA_LOG="$TMP/quota.log" QUOTA_FIXTURES="$TMP/fixtures"
 mkdir -p "$QUOTA_FIXTURES"
 printf '%s\n' '{"ok":true,"agent":"hermes","model":"gpt-test","provider":"openai-codex","model_vendor":"openai","vendor":{"verdict":"short_only","tightest_window":{"used_pct":99.0,"seconds_to_reset":123}}}' >"$QUOTA_FIXTURES/sender.json"

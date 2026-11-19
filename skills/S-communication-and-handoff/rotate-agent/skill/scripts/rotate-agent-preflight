@@ -8,12 +8,13 @@
 set -Eeuo pipefail
 
 usage() {
-  cat >&2 <<'USAGE'
+  local status="${1:-2}"
+  cat >&"$((status == 0 ? 1 : 2))" <<'USAGE'
 usage: rotate-agent-preflight --from claude-code|codex|cursor|hermes|openclaw --to <agent> [--model <M>] [--provider <P>] --cwd <checkout>
                               [--sender <seat-address>] [--quota-cmd <cmd>]
 prints one line per check: OK <check> | FAIL <check>: <what> -> <what to do>
 USAGE
-  exit 2
+  exit "$status"
 }
 
 MODEL="" PROVIDER="" FROM="" TO="" CWD="" SENDER="" QUOTA_CMD=(sno subscription-quota-check)
@@ -26,7 +27,7 @@ while [[ $# -gt 0 ]]; do
     --cwd) CWD="${2:-}"; shift 2 ;;
     --sender) SENDER="${2:-}"; shift 2 ;;
     --quota-cmd) QUOTA_CMD=("${2:-}"); shift 2 ;;
-    -h|--help) usage ;;
+    -h|--help) usage 0 ;;
     *) printf 'rotate-agent-preflight: unknown option %s\n' "$1" >&2; usage ;;
   esac
 done
