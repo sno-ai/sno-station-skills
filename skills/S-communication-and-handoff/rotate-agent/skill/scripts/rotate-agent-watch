@@ -17,12 +17,12 @@ USAGE
 FROM="" SEAT="" STATE="" CWD="" THRESHOLD=2 QUOTA_CMD=(sno subscription-quota-check)
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --from) FROM="${2:-}"; shift 2 ;;
+    --from) [[ -n "${2:-}" ]] || usage; FROM="$2"; shift 2 ;;
     --seat) [[ -n "${2:-}" ]] || usage; SEAT="$2"; shift 2 ;;
-    --state) STATE="${2:-}"; shift 2 ;;
+    --state) [[ -n "${2:-}" ]] || usage; STATE="$2"; shift 2 ;;
     --cwd) [[ -n "${2:-}" ]] || usage; CWD="$2"; shift 2 ;;
-    --threshold-pct) THRESHOLD="${2:-}"; shift 2 ;;
-    --quota-cmd) QUOTA_CMD=("${2:-}"); shift 2 ;;
+    --threshold-pct) [[ -n "${2:-}" ]] || usage; THRESHOLD="$2"; shift 2 ;;
+    --quota-cmd) [[ -n "${2:-}" ]] || usage; QUOTA_CMD=("$2"); shift 2 ;;
     -h|--help) usage ;;
     *) printf 'rotate-agent-watch: unknown option %s\n' "$1" >&2; usage ;;
   esac

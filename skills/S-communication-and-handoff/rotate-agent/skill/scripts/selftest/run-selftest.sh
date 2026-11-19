@@ -73,6 +73,18 @@ for sender in claude-code codex cursor hermes openclaw; do
 done
 if "$WATCH" --from codex --to claude-code-code --seat sender@host --state "$TMP/x" --cwd "$REPO" --quota-cmd "$FAKE" >/dev/null 2>&1; then rc=0; else rc=$?; fi
 check "removed --to is rejected" "2" "$rc"
+# A final option with no value is a usage error: exit 2 with usage on stderr, never a silent exit 1.
+usage_rc_and_err() { # script option -> "rc|first-stderr-line"
+  local script="$1" opt="$2" rc=0 err
+  err="$("$script" "$opt" 2>&1 >/dev/null)" || rc=$?
+  printf '%s|%s' "$rc" "$(head -n1 <<<"$err")"
+}
+for opt in --from --state --threshold-pct --quota-cmd; do
+  check "watch $opt without value is a usage error" "2|usage: rotate-agent-watch" "$(usage_rc_and_err "$WATCH" "$opt")"
+done
+for opt in --from --to --model --provider --sender --quota-cmd; do
+  check "preflight $opt without value is a usage error" "2|usage: rotate-agent-preflight" "$(usage_rc_and_err "$PREFLIGHT" "$opt")"
+done
 printf 'rotated %s from=hermes to=claude-code remaining=1%% commits=1\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$TMP/watch.state"
 check "real handoff is done until the receiver commits" 'DONE rotated' "$(run)"
 git -C "$REPO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m receiver
