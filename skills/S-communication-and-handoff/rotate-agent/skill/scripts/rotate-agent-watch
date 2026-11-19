@@ -6,12 +6,13 @@
 set -Eeuo pipefail
 
 usage() {
-  cat >&2 <<'USAGE'
+  local status="${1:-2}"
+  cat >&"$((status == 0 ? 1 : 2))" <<'USAGE'
 usage: rotate-agent-watch --from claude-code|codex|cursor|hermes|openclaw --seat <address> --state <file> --cwd <checkout>
                       [--threshold-pct <N>] [--quota-cmd <cmd>]
 prints one line: DONE | HOLD | ROTATE | COMPLETE ...
 USAGE
-  exit 2
+  exit "$status"
 }
 
 FROM="" SEAT="" STATE="" CWD="" THRESHOLD=2 QUOTA_CMD=(sno subscription-quota-check)
@@ -23,7 +24,7 @@ while [[ $# -gt 0 ]]; do
     --cwd) [[ -n "${2:-}" ]] || usage; CWD="$2"; shift 2 ;;
     --threshold-pct) THRESHOLD="${2:-}"; shift 2 ;;
     --quota-cmd) QUOTA_CMD=("${2:-}"); shift 2 ;;
-    -h|--help) usage ;;
+    -h|--help) usage 0 ;;
     *) printf 'rotate-agent-watch: unknown option %s\n' "$1" >&2; usage ;;
   esac
 done
