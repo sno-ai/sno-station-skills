@@ -26,8 +26,7 @@ for script in "${scripts[@]}"; do
     tests=$((tests + 1))
     if [[ "$rc" -eq 0 ]] && [[ -s "$root/$script.out" ]] && \
        grep -Fqi "${script%.sh}" "$root/$script.out" && \
-       { [[ "$script" != exec-sentinel.sh && "$script" != roster.sh ]] ||
-         ! grep -Eq '^(set -|case )' "$root/$script.out"; } && \
+       ! grep -Eq '^(set -|case )' "$root/$script.out" && \
        [[ ! -s "$root/$script.err" ]]; then
         printf 'ok %d - %s exposes help without running\n' "$tests" "$script"
     else

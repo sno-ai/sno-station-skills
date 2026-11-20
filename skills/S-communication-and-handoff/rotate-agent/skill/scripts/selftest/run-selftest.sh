@@ -40,6 +40,23 @@ sed_i() { sed "$1" "$2" >"$2.new" && mv -- "$2.new" "$2"; }
 check() { # name expected-prefix actual
   if [[ "$3" == "$2"* ]]; then printf 'PASS %s\n' "$1"; else printf 'FAIL %s: got %q\n' "$1" "$3"; fail=1; fi
 }
+for script in "$WATCH" "$PREFLIGHT"; do
+  name="${script##*/}"
+  if out=$("$script" --help 2>"$TMP/help.err"); then rc=0; else rc=$?; fi
+  check "$name --help exits 0" "0" "$rc"
+  check "$name --help prints usage on stdout" "usage: $name" "${out%%$'\n'*}"
+  check "$name --help leaves stderr empty" "1" "$(test ! -s "$TMP/help.err" && printf 1 || printf 0)"
+  if "$script" --bad-option >/dev/null 2>&1; then rc=0; else rc=$?; fi
+  check "$name rejects an unknown option with exit 2" "1" "$((rc == 2))"
+done
+for option in --from --state --threshold-pct --quota-cmd; do
+  if "$WATCH" "$option" >/dev/null 2>"$TMP/usage.err"; then rc=0; else rc=$?; fi
+  check "watch $option without a value" '2 usage: rotate-agent-watch' "$rc $(head -n1 "$TMP/usage.err")"
+done
+for option in --from --to --model --provider --cwd --sender --quota-cmd; do
+  if "$PREFLIGHT" "$option" >/dev/null 2>"$TMP/usage.err"; then rc=0; else rc=$?; fi
+  check "preflight $option without a value" '2 usage: rotate-agent-preflight' "$rc $(head -n1 "$TMP/usage.err")"
+done
 export QUOTA_LOG="$TMP/quota.log" QUOTA_FIXTURES="$TMP/fixtures"
 mkdir -p "$QUOTA_FIXTURES"
 printf '%s\n' '{"ok":true,"agent":"hermes","model":"gpt-test","provider":"openai-codex","model_vendor":"openai","vendor":{"verdict":"short_only","tightest_window":{"used_pct":99.0,"seconds_to_reset":123}}}' >"$QUOTA_FIXTURES/sender.json"
@@ -73,18 +90,6 @@ for sender in claude-code codex cursor hermes openclaw; do
 done
 if "$WATCH" --from codex --to claude-code-code --seat sender@host --state "$TMP/x" --cwd "$REPO" --quota-cmd "$FAKE" >/dev/null 2>&1; then rc=0; else rc=$?; fi
 check "removed --to is rejected" "2" "$rc"
-# A final option with no value is a usage error: exit 2 with usage on stderr, never a silent exit 1.
-usage_rc_and_err() { # script option -> "rc|first-stderr-line"
-  local script="$1" opt="$2" rc=0 err
-  err="$("$script" "$opt" 2>&1 >/dev/null)" || rc=$?
-  printf '%s|%s' "$rc" "$(head -n1 <<<"$err")"
-}
-for opt in --from --state --threshold-pct --quota-cmd; do
-  check "watch $opt without value is a usage error" "2|usage: rotate-agent-watch" "$(usage_rc_and_err "$WATCH" "$opt")"
-done
-for opt in --from --to --model --provider --sender --quota-cmd; do
-  check "preflight $opt without value is a usage error" "2|usage: rotate-agent-preflight" "$(usage_rc_and_err "$PREFLIGHT" "$opt")"
-done
 printf 'rotated %s from=hermes to=claude-code remaining=1%% commits=1\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$TMP/watch.state"
 check "real handoff is done until the receiver commits" 'DONE rotated' "$(run)"
 git -C "$REPO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m receiver

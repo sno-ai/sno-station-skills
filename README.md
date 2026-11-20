@@ -1,19 +1,22 @@
-# Sno Station Skills: 39 skills that make Claude Code and Codex work as one team
+# Sno: Smart agents. Senior habits. Better every day.
+
+**Read in other languages:** **English** · [中文](docs/readme/README.zh-CN.md) · [Deutsch](docs/readme/README.de.md) · [Español](docs/readme/README.es.md) · [Français](docs/readme/README.fr.md) · [Русский](docs/readme/README.ru.md) · [한국어](docs/readme/README.ko.md) · [日本語](docs/readme/README.ja.md) · [繁體中文](docs/readme/README.zh-TW.md)
 
 ![Sno Station — Agents, assemble. Two heads are better than one, and smarter by morning.](https://raw.githubusercontent.com/sno-ai/sno-station/main/docs/images/hero-banner.png)
 
-**The working habits of a real engineering team, written as skills your AI agents follow.** One agent builds and a different agent reviews. Before one runs out of quota, it writes a handover and wakes another to continue from the exact commit. "Done" has to be proven by a real run. What you correct today is proposed as a rule for their skills tonight, and you approve what stays.
+**Your AI agents are brilliant new hires with no colleagues. These skills give them the habits of a team that has shipped before.** One agent builds and a different one reviews. Before one runs out of quota, it writes a handover and another picks up from the exact commit. Nobody gets to say "done" without a real run to prove it. And every night they look back at the day, and propose new rules for you to approve.
+
+Works with **Claude Code, Codex, Cursor and Hermes Agent**, and OpenClaw too. Each skill installs fully where the agent can run it, in a reduced form where it cannot.
 
 Every skill is plain text you can read, copy and change. These are the skills [Sno Station](https://github.com/sno-ai/sno-station) installs into the agents you already run, and the ones we use every day to build it.
 
 [![GitHub stars](https://img.shields.io/github/stars/sno-ai/sno-station-skills?label=stars&color=eab308&labelColor=3b3b3b)](https://github.com/sno-ai/sno-station-skills/stargazers)
 [![latest release](https://img.shields.io/github/v/release/sno-ai/sno-station-skills?label=release&color=2dd4bf&labelColor=3b3b3b)](https://github.com/sno-ai/sno-station-skills/releases/latest)
 [![license Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-97ca00.svg?labelColor=3b3b3b)](LICENSE)
-![39 skills in 30 units](https://img.shields.io/badge/skills-39%20in%2030%20units-2dd4bf.svg?labelColor=3b3b3b)
 ![self-tested before every release](https://img.shields.io/badge/every%20release-self--tested-3b82f6.svg?labelColor=3b3b3b)
-![agents Claude Code, Codex](https://img.shields.io/badge/agents-Claude%20Code%20%C2%B7%20Codex-f0a04b.svg?labelColor=3b3b3b)
+![agents Claude Code, Codex, Cursor, Hermes, OpenClaw](https://img.shields.io/badge/agents-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Cursor%20%C2%B7%20Hermes%20%C2%B7%20OpenClaw-f0a04b.svg?labelColor=3b3b3b)
 
-To get all 39, tell your agent:
+To get every skill, tell your agent:
 
 ```text
 install sno.ai from GitHub
@@ -51,8 +54,8 @@ You keep working exactly as before, in whichever agent you like. Then:
 5. **You have a job for someone else.** Say "write a charter". You get one file that says what
    to deliver, what is out of bounds, what you already decided, and how each success check will
    be proven. Any agent can then `deliver` it, and every check is proven by a recorded real run.
-6. **Every night, the team looks back.** The nightly loop reads the day's Claude Code and Codex
-   sessions, finds the mistakes that repeat, and proposes lessons and skill changes. In the
+6. **Every night, the team looks back.** The nightly loop reads the day's sessions from all your
+   agents, finds the mistakes that repeat, and proposes lessons and skill changes. In the
    morning you accept the ones you like with `sno rem-reflect accept <id>`. Nothing changes
    without that accept.
 
@@ -66,13 +69,13 @@ because nobody told it otherwise.
 
 **Sno Station Skills fixes the team, not the model.** These are the skills
 [Sno Station](https://github.com/sno-ai/sno-station) installs into the agents you already
-run. They give Claude Code and Codex the habits every good engineering team has: a second pair
+run. They give your agents the habits every good engineering team has: a second pair
 of eyes from a different vendor, a clean handover when someone has to leave, a lead who hands
 out work with a written definition of done, a one-page brief when you come back, and a
 retrospective every night that turns this week's mistakes into next week's rules.
 
 **Two agents, different roles.** One agent carries out your task. The other reviews the result
-against your requirements. Claude Code and Codex can take either role. When both are installed,
+against your requirements. Claude Code, Codex, Cursor or Hermes Agent can take either role. When both are installed,
 the review runs in the other one, in a fresh session with none of the author's conversation.
 The agents exchange findings and corrections between themselves.
 
@@ -174,7 +177,7 @@ Copy this prompt into your agent's chat:
 Install sno.ai from GitHub.
 ```
 
-This installs Sno Station and sets up all 39 skills, plus the programs they call,
+This installs Sno Station and sets up every skill, plus the programs they call,
 for the supported agents it finds on your machine.
 
 Or paste this command into your terminal:
@@ -217,7 +220,7 @@ for this project. Check that `sno reach pair --help` works and tell me what is m
 before installing anything else.
 ```
 
-Supported agents for Sno Station: Claude Code, Codex, OpenClaw and Hermes Agent. Each skill declares
+Supported agents for Sno Station: Claude Code, Codex, Cursor, Hermes Agent and OpenClaw. Each skill declares
 what it needs from the agent. Setup uses that declaration to install it fully, install it in a reduced
 form, or skip it when the agent cannot run it.
 
@@ -240,8 +243,8 @@ codex plugin marketplace add sno-ai/sno-station-skills
 codex plugin add sno-station@sno-ai
 ```
 
-`sno-station` holds all 39 skills; most of them call Sno Station programs, so install Sno Station too.
-For only the 7 skills that run without Sno Station, install `sno-station-standalone@sno-ai` instead.
+`sno-station` holds every skill; most of them call Sno Station programs, so install Sno Station too.
+For only the 12 skills that run without Sno Station, install `sno-station-standalone@sno-ai` instead.
 
 ## The skills
 
@@ -616,7 +619,7 @@ has to happen at a time you will not be there for.
 
 #### [rem-reflect](skills/R-recursive-self-improvement/rem-reflect/) — the nightly loop: your agents learn from their own sessions
 
-- **Once a day,** it reads this machine's Claude Code and Codex sessions, finds the failures and
+- **Once a day,** it reads this machine's agent sessions (Claude Code, Codex, Cursor, Hermes Agent and OpenClaw), finds the failures and
   corrections that repeat, and turns them into lessons and proposed skill changes.
 - **You approve everything:** `sno rem-reflect accept`, `reject` or `tbd` for each one. Nothing
   changes without your accept.

@@ -30,7 +30,7 @@ while [ $# -gt 0 ]; do
         --journey) [ $# -ge 2 ] || { echo "review-receipt: --journey needs a value" >&2; exit 2; }
                    journey="$2"; shift 2 ;;
         --check)   check=1; shift ;;
-        -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,/^set -Eeuo pipefail$/p' "$0" | sed '$d;s/^# \{0,1\}//'; exit 0 ;;
         *) echo "review-receipt: unknown arg $1" >&2; exit 2 ;;
     esac
 done
