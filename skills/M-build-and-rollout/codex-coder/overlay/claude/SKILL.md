@@ -121,7 +121,7 @@ Do not restate the language standards in the handoff. The selected Codex skills 
 
    Use the coding effort above; do not inherit the dispatcher's `low`. The `.done`
    marker is written only when codex has exited, and carries the exit status.
-4. Arm the wait with the heartbeat skill: `heartbeat --label codex-<slug> --until-file
+4. Arm the wait with the heartbeat skill: `sno heartbeat --label codex-<slug> --until-file
    <scratch>/codex-<slug>.done -- tail -c 300 <scratch>/codex-<slug>.err.log`, then attach the
    reader line the arm output prints. Each tick shows the newest reasoning summary, which is the
    only liveness signal a codex run gives (a healthy run can be silent on stdout for minutes).
