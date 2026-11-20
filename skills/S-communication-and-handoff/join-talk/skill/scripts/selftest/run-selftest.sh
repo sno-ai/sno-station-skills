@@ -214,6 +214,20 @@ grep -q -- '^sno reach register --as codex.seat@host1 --channel terminal --handl
   fail "codex thread: reach register call was: $(grep '^sno reach register' "$LOG" || true)"
 pass 'a Codex conversation registers its thread, not the tmux pane it runs in'
 
+# 9. Codex started from inside a Claude background session is its own agent: it joins by its thread.
+: >"$LOG"
+set +e
+out="$(cd "$REPO" && env -i HOME="$FAKE_HOME" PATH="$FAKE_HOME/bin:$PATH" JOIN_SELFTEST_LOG="$LOG" \
+  CLAUDECODE=1 JOIN_SELFTEST_CLAUDE_PID=$$ JOIN_SELFTEST_CLAUDE_KIND=background ORCA_TAB_ID=tab-web-coder ORCA_TERMINAL_HANDLE=term_web_coder \
+  CODEX_THREAD_ID=01a1fa53-46f9-7440-aedf-b0b4b837465e JOIN_SELFTEST_CODEX_HANDLE='codex:01a1fa53-46f9-7440-aedf-b0b4b837465e:L2hvbWU=' \
+  bash "$JOIN" forkcodex.seat@host1 2>"$WORK/forkcodex.err")"
+rc=$?
+set -e
+[[ $rc -eq 0 && "$out" == 'joined forkcodex.seat@host1' ]] || fail "codex in a fork: rc=$rc out=$out $(cat "$WORK/forkcodex.err")"
+grep -q -- '^sno reach register --as forkcodex.seat@host1 --channel terminal --handle codex:01a1fa53-46f9-7440-aedf-b0b4b837465e:L2hvbWU=$' "$LOG" ||
+  fail "codex in a fork: reach register call was: $(grep '^sno reach register' "$LOG" || true)"
+pass 'Codex started inside a Claude background session joins by its own thread'
+
 if [[ $failures -eq 0 ]]; then
   printf 'join-talk selftest: all cases passed\n'
   exit 0

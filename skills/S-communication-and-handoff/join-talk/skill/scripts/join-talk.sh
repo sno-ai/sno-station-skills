@@ -53,10 +53,19 @@ command -v sno >/dev/null || die 4 'sno is missing: Reach registration needs it 
 command -v jq >/dev/null || die 4 'jq is missing: join-talk needs it to detect another terminal holding the same address'
 command -v flock >/dev/null || die 4 'flock is missing: join-talk needs it so two terminals joining together do not pick the same address (install util-linux flock)'
 
+# A Codex conversation is addressed by its thread: the window it runs in can switch to a fork or
+# another thread, and a one-shot codex exec leaves its pane to a shell. Reach finds the thread
+# only when Codex, not an agent it started, is the nearest agent above this shell, so this comes
+# before the background-session check: a Codex started from a Claude fork is its own agent.
+codex_handle=''
+if [[ -n "${CODEX_THREAD_ID:-}" ]] && terminal_info="$(sno reach terminal-info 2>/dev/null)"; then
+  codex_handle="$(jq -r '.handle | strings | select(startswith("codex:"))' <<<"$terminal_info")"
+fi
+
 # A Claude Code background session runs in a process the Claude service started. The terminal
 # variables it carries belong to the terminal it was started or forked from, not to the window
 # showing it, so a wake sent there lands in another conversation.
-if [[ -n "${CLAUDECODE:-}" ]] && command -v claude >/dev/null; then
+if [[ -z "$codex_handle" && -n "${CLAUDECODE:-}" ]] && command -v claude >/dev/null; then
   ancestors=' '
   pid=$$
   while ((pid > 1)); do
@@ -69,14 +78,6 @@ if [[ -n "${CLAUDECODE:-}" ]] && command -v claude >/dev/null; then
   if [[ -n "$background" ]]; then
     die 3 "this conversation is a Claude Code background session (${background%% *}); its terminal settings name the terminal it was started from, not the window showing it, so Reach would wake the wrong window. To make it reachable: claude stop ${background%% *}, then in the window you want run claude --resume ${background#* } and join again there"
   fi
-fi
-
-# A Codex conversation is addressed by its thread: the window it runs in can switch to a fork or
-# another thread, and a one-shot codex exec leaves its pane to a shell. Reach finds the thread
-# only when Codex, not an agent it started, is the nearest agent above this shell.
-codex_handle=''
-if [[ -n "${CODEX_THREAD_ID:-}" ]] && terminal_info="$(sno reach terminal-info 2>/dev/null)"; then
-  codex_handle="$(jq -r '.handle | strings | select(startswith("codex:"))' <<<"$terminal_info")"
 fi
 
 # Otherwise the wake channel is whatever terminal this agent's shell inherited.
