@@ -281,4 +281,28 @@ else
     cat "$root/stale.err"
     exit 1
 fi
-printf '1..12\n'
+
+# A Claude Code background session keeps the Orca variables of the window it was started from;
+# the stub `claude` lists this test shell, an ancestor of cos-claim, as that session.
+cat >"$root/bin/claude" <<'CLAUDE'
+#!/usr/bin/env bash
+[[ "$*" == 'agents --json' ]] || exit 64
+jq -nc --argjson pid "$COS_TEST_CLAUDE_PID" \
+    '[{pid:$pid,id:"20fc85dc",kind:"background",sessionId:"20fc85dc-2950-4739-9b8a-71b333581c4c"}]'
+CLAUDE
+chmod +x "$root/bin/claude"
+mkdir -p "$root/bg-repo"
+cd "$root/bg-repo"
+set +e
+CLAUDECODE=1 COS_TEST_CLAUDE_PID=$$ bash "$claim" register >"$root/bg.out" 2>"$root/bg.err"
+bg_rc=$?
+set -e
+if [[ "$bg_rc" == 65 && ! -e "$SNO_REACH_ROOT/cos.bg-repo@$host/reachable.json" ]] &&
+   grep -Fq 'background session' "$root/bg.err"; then
+    printf 'ok 13 - a Claude Code background session is not registered to the window it was started from\n'
+else
+    printf 'not ok 13 - a Claude Code background session was registered to an inherited window\n'
+    cat "$root/bg.err"
+    exit 1
+fi
+printf '1..13\n'
