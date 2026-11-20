@@ -176,8 +176,26 @@ registered_pane_of() {
     jq -r '.identity.value // empty' "$REACH_ROOT/$address/reachable.json"
 }
 
+# A Claude Code background session runs in a process the Claude service started; its terminal
+# variables belong to the terminal it was started or forked from, not to the window showing it.
+claude_background_session() {
+    local ancestors=' ' pid=$$
+    [[ -n "${CLAUDECODE:-}" ]] && command -v claude >/dev/null || return 1
+    while ((pid > 1)); do
+        ancestors+="$pid "
+        pid="$(ps -o ppid= -p "$pid" | tr -d ' ')" || break
+    done
+    timeout 10 claude agents --json 2>/dev/null | jq -e --arg ancestors "$ancestors" '
+        any(.[]; .kind == "background" and .pid != null and
+            (" \(.pid) " as $pid | $ancestors | contains($pid)))' >/dev/null 2>&1
+}
+
 current_window() {
     WINDOW_CHANNEL='' WINDOW_IDENTITY='' WINDOW_HANDLE=''
+    if claude_background_session; then
+        printf 'cos-claim: this is a Claude Code background session; its terminal settings name the terminal it was started from, not the window showing it, so no window is used.\n' >&2
+        return
+    fi
     if [[ -n "${TMUX_PANE:-}" ]]; then
         WINDOW_CHANNEL=tmux WINDOW_IDENTITY="$TMUX_PANE" WINDOW_HANDLE="$TMUX_PANE"
     elif [[ -n "${ORCA_TAB_ID:-}" ]]; then
