@@ -30,7 +30,7 @@ line, logged in.
    date). It measures both and prints one page: a headline with the problems the second model caught and the moments in which the agents caught their own mistakes (kept apart, never added together), the second brain's
    numbers with its biggest catches quoted by title, the agents' own catches in their own words, and how to read
    the numbers. Tell the user first that the self-check part sends short excerpts of their conversations to their
-   own claude or codex (100 by default, about four minutes, it costs tokens); `--limit N` changes that, and
+   own claude or codex (30 by default, it costs tokens); `--limit N` changes that, and
    `--agent claude` or `--agent codex` narrows it. `--agent cursor` reads Cursor's conversations
    (`~/.cursor/projects/*/agent-transcripts`) instead and has `cursor-agent` judge them; Cursor transcripts hold no
    tool output, so only its spoken admissions count there, and no per-message times, so a Cursor conversation updated in
