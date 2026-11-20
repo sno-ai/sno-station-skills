@@ -71,8 +71,20 @@ if [[ -n "${CLAUDECODE:-}" ]] && command -v claude >/dev/null; then
   fi
 fi
 
-# The wake channel is whatever terminal this agent's shell inherited.
-if [[ -n "${TMUX_PANE:-}" ]]; then
+# A Codex conversation is addressed by its thread: the window it runs in can switch to a fork or
+# another thread, and a one-shot codex exec leaves its pane to a shell. Reach finds the thread
+# only when Codex, not an agent it started, is the nearest agent above this shell.
+codex_handle=''
+if [[ -n "${CODEX_THREAD_ID:-}" ]] && terminal_info="$(sno reach terminal-info 2>/dev/null)"; then
+  codex_handle="$(jq -r '.handle | strings | select(startswith("codex:"))' <<<"$terminal_info")"
+fi
+
+# Otherwise the wake channel is whatever terminal this agent's shell inherited.
+if [[ -n "$codex_handle" ]]; then
+  identity="terminal:$codex_handle"
+  reach_channel='terminal'
+  reach_handle="$codex_handle"
+elif [[ -n "${TMUX_PANE:-}" ]]; then
   identity="tmux-pane:${TMUX_PANE}"
   reach_channel='tmux'
   reach_handle="$TMUX_PANE"
