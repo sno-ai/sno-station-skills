@@ -166,6 +166,38 @@ set -e
 [[ $rc -eq 0 && "$out" == 'joined my-repo-v2.agent@team-macbook.local' ]] || fail "mixed-case host: rc=$rc out=$out $(cat "$WORK/mixedhost.err")"
 pass "mixed-case hostname is lowercased"
 
+# 7. A Claude Code background session carries the terminal variables of the terminal it was
+#    started or forked from, not of the window showing it: refuse before any registration.
+#    The stub `claude` lists this selftest shell, an ancestor of join-talk, as the session.
+cat >"$FAKE_HOME/bin/claude" <<'EOF'
+#!/usr/bin/env bash
+[[ "$*" == 'agents --json' ]] || exit 64
+jq -nc --argjson pid "$JOIN_SELFTEST_CLAUDE_PID" --arg kind "$JOIN_SELFTEST_CLAUDE_KIND" \
+  '[{pid:$pid,id:"20fc85dc",kind:$kind,sessionId:"20fc85dc-2950-4739-9b8a-71b333581c4c",name:"BlackFriday"}]'
+EOF
+chmod +x "$FAKE_HOME/bin/claude"
+join_in_claude() {
+  # join_in_claude <label> <session kind> — a Claude Code shell inside an Orca terminal.
+  : >"$LOG"
+  set +e
+  out="$(cd "$REPO" && env -i HOME="$FAKE_HOME" PATH="$FAKE_HOME/bin:$PATH" JOIN_SELFTEST_LOG="$LOG" \
+    CLAUDECODE=1 JOIN_SELFTEST_CLAUDE_PID=$$ JOIN_SELFTEST_CLAUDE_KIND="$2" \
+    ORCA_TAB_ID=tab-web-coder ORCA_TERMINAL_HANDLE=term_web_coder bash "$JOIN" bg.seat@host1 2>"$WORK/$1.err")"
+  rc=$?
+  set -e
+}
+join_in_claude claude-bg background
+[[ $rc -eq 3 && ! -s "$LOG" ]] || fail "background session: rc=$rc log=$(cat "$LOG")"
+if ! grep -q 'claude stop 20fc85dc' "$WORK/claude-bg.err" ||
+  ! grep -q 'claude --resume 20fc85dc-2950-4739-9b8a-71b333581c4c' "$WORK/claude-bg.err"; then
+  fail "background session: message was: $(cat "$WORK/claude-bg.err")"
+fi
+join_in_claude claude-fg interactive
+[[ $rc -eq 0 && "$out" == 'joined bg.seat@host1' ]] || fail "interactive session: rc=$rc out=$out $(cat "$WORK/claude-fg.err")"
+grep -q -- '^sno reach register --as bg.seat@host1 --channel orca --handle term_web_coder$' "$LOG" ||
+  fail "interactive session: reach register call was: $(grep '^sno reach register' "$LOG" || true)"
+pass 'a Claude Code background session is refused; an interactive one registers its terminal'
+
 if [[ $failures -eq 0 ]]; then
   printf 'join-talk selftest: all cases passed\n'
   exit 0
