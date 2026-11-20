@@ -53,6 +53,24 @@ command -v sno >/dev/null || die 4 'sno is missing: Reach registration needs it 
 command -v jq >/dev/null || die 4 'jq is missing: join-talk needs it to detect another terminal holding the same address'
 command -v flock >/dev/null || die 4 'flock is missing: join-talk needs it so two terminals joining together do not pick the same address (install util-linux flock)'
 
+# A Claude Code background session runs in a process the Claude service started. The terminal
+# variables it carries belong to the terminal it was started or forked from, not to the window
+# showing it, so a wake sent there lands in another conversation.
+if [[ -n "${CLAUDECODE:-}" ]] && command -v claude >/dev/null; then
+  ancestors=' '
+  pid=$$
+  while ((pid > 1)); do
+    ancestors+="$pid "
+    pid="$(ps -o ppid= -p "$pid" | tr -d ' ')" || break
+  done
+  background="$(timeout 10 claude agents --json 2>/dev/null | jq -r --arg ancestors "$ancestors" '
+    first(.[] | select(.kind == "background" and .pid != null) |
+      select(" \(.pid) " as $pid | $ancestors | contains($pid)) | "\(.id) \(.sessionId)")' 2>/dev/null)" || true
+  if [[ -n "$background" ]]; then
+    die 3 "this conversation is a Claude Code background session (${background%% *}); its terminal settings name the terminal it was started from, not the window showing it, so Reach would wake the wrong window. To make it reachable: claude stop ${background%% *}, then in the window you want run claude --resume ${background#* } and join again there"
+  fi
+fi
+
 # The wake channel is whatever terminal this agent's shell inherited.
 if [[ -n "${TMUX_PANE:-}" ]]; then
   identity="tmux-pane:${TMUX_PANE}"

@@ -77,3 +77,7 @@ such as `maccoder-2.agent@<host>`. An explicit address is used as given.
 - `jq is missing` or `flock is missing` — install it (`flock` comes from util-linux), then run it again.
 - `ORCA_TERMINAL_HANDLE is empty` — an Orca shell without a terminal handle; Reach cannot
   address it. Tell the person; do not retry.
+- `Claude Code background session` — this conversation runs in the background (forked, `--bg`
+  or a reused spare), so its terminal settings belong to another window and a wake would land
+  there. Never register it by hand from those settings. Tell the person the two commands the
+  message names: stop it, resume it in the window they want, and join again there.
