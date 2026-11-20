@@ -49,6 +49,14 @@ for script in "$WATCH" "$PREFLIGHT"; do
   if "$script" --bad-option >/dev/null 2>&1; then rc=0; else rc=$?; fi
   check "$name rejects an unknown option with exit 2" "1" "$((rc == 2))"
 done
+for option in --from --state --threshold-pct --quota-cmd; do
+  if "$WATCH" "$option" >/dev/null 2>"$TMP/usage.err"; then rc=0; else rc=$?; fi
+  check "watch $option without a value" '2 usage: rotate-agent-watch' "$rc $(head -n1 "$TMP/usage.err")"
+done
+for option in --from --to --model --provider --cwd --sender --quota-cmd; do
+  if "$PREFLIGHT" "$option" >/dev/null 2>"$TMP/usage.err"; then rc=0; else rc=$?; fi
+  check "preflight $option without a value" '2 usage: rotate-agent-preflight' "$rc $(head -n1 "$TMP/usage.err")"
+done
 export QUOTA_LOG="$TMP/quota.log" QUOTA_FIXTURES="$TMP/fixtures"
 mkdir -p "$QUOTA_FIXTURES"
 printf '%s\n' '{"ok":true,"agent":"hermes","model":"gpt-test","provider":"openai-codex","model_vendor":"openai","vendor":{"verdict":"short_only","tightest_window":{"used_pct":99.0,"seconds_to_reset":123}}}' >"$QUOTA_FIXTURES/sender.json"
