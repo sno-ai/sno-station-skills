@@ -26,7 +26,9 @@ mkdir -p "$FAKE_HOME/.local/state/sno-reach" "$FAKE_HOME/bin"
 cat >"$FAKE_HOME/bin/sno" <<'EOF'
 #!/usr/bin/env bash
 printf 'sno %s\n' "$*" >>"$JOIN_SELFTEST_LOG"
-if [[ "$*" == 'reach terminal-info' && -n "${SNO_REACH_TERMINAL_SOCKET:-}" ]]; then
+if [[ "$*" == 'reach terminal-info' && -n "${JOIN_SELFTEST_CODEX_HANDLE:-}" ]]; then
+  jq -nc --arg handle "$JOIN_SELFTEST_CODEX_HANDLE" '{handle:$handle,identity:$handle}'
+elif [[ "$*" == 'reach terminal-info' && -n "${SNO_REACH_TERMINAL_SOCKET:-}" ]]; then
   jq -nc --arg handle "relay:$SNO_REACH_TERMINAL_SOCKET" '{handle:$handle,identity:$handle}'
 fi
 EOF
@@ -197,6 +199,20 @@ join_in_claude claude-fg interactive
 grep -q -- '^sno reach register --as bg.seat@host1 --channel orca --handle term_web_coder$' "$LOG" ||
   fail "interactive session: reach register call was: $(grep '^sno reach register' "$LOG" || true)"
 pass 'a Claude Code background session is refused; an interactive one registers its terminal'
+
+# 8. A Codex conversation is addressed by its thread even inside a tmux pane: the pane can switch
+#    to a fork or another thread, and a one-shot codex exec leaves it to a shell.
+: >"$LOG"
+set +e
+out="$(cd "$REPO" && env -i HOME="$FAKE_HOME" PATH="$FAKE_HOME/bin:$PATH" JOIN_SELFTEST_LOG="$LOG" TMUX_PANE='%7' \
+  CODEX_THREAD_ID=01a1fa11-82d2-79b0-8793-43e85b6ead41 JOIN_SELFTEST_CODEX_HANDLE='codex:01a1fa11-82d2-79b0-8793-43e85b6ead41:L2hvbWU=' \
+  bash "$JOIN" codex.seat@host1 2>"$WORK/codex.err")"
+rc=$?
+set -e
+[[ $rc -eq 0 && "$out" == 'joined codex.seat@host1' ]] || fail "codex thread: rc=$rc out=$out $(cat "$WORK/codex.err")"
+grep -q -- '^sno reach register --as codex.seat@host1 --channel terminal --handle codex:01a1fa11-82d2-79b0-8793-43e85b6ead41:L2hvbWU=$' "$LOG" ||
+  fail "codex thread: reach register call was: $(grep '^sno reach register' "$LOG" || true)"
+pass 'a Codex conversation registers its thread, not the tmux pane it runs in'
 
 if [[ $failures -eq 0 ]]; then
   printf 'join-talk selftest: all cases passed\n'
