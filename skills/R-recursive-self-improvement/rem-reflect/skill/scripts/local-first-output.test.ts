@@ -146,6 +146,31 @@ test('experience graph: local-first outcomes survive drafting and approval', t =
   assert.equal(readLessons(store).find(row => row.lesson_id === fresh.lesson_id)?.status, 'rejected');
 });
 
+test('the local writer skips commit-only sessions and omits commits from the verdict list', t => {
+  localFirst(t);
+  const config = fixtureConfig();
+  const store = makeStore(config);
+  const commit = { type: 'event_msg', payload: { type: 'item_completed', turn_id: 'turn-1',
+    item: { type: 'CommandExecution', id: 'exec-commit', parsed_cmd: [{ type: 'unknown', cmd: 'git commit -m report' }],
+      status: 'completed', exit_code: 0, aggregated_output: '[main abc123] report\n 1 file changed' } } };
+  writeCodexSession(config.codex_root, 'test-and-commit', [
+    codexMeta('test-and-commit', '/n'), codexUser('write the weekly report'),
+    codexAssistant('Report written, done.'), codexFailedTest(), commit, codexUser(`No, ${CORRECTION}`),
+  ], MT);
+  writeCodexSession(config.codex_root, 'commit-only', [
+    codexMeta('commit-only', '/n'), codexUser('write the weekly report'),
+    codexAssistant('Report written, done.'), commit, codexUser(`No, ${CORRECTION}`),
+  ], MT);
+
+  const writer = new WriterCli(prompt => /^\d+ test failed /m.test(prompt) ? lessonFor(prompt) : { lesson: null });
+  const result = run(store, NIGHT, 'u', writer);
+  assert.equal(result.code, 0, result.lines.join('\n'));
+  assert.deepEqual(writer.asked.map(({ cli, input }) => [
+    cli, input.split('\nExternal verdicts (line kind result command):\n')[1]?.split(/^\d+: /m)[0].trimEnd(),
+  ]), [['codex', '5 test failed cd /n && python3 -m pytest -q tests/report']]);
+  assert.equal(readLessons(store).length, 1);
+});
+
 test('experience graph: local-first keeps only fact identifiers supplied in evidence', t => {
   localFirst(t);
   const config = fixtureConfig({ claude_root: tmp('c'), codex_root: tmp('x') });

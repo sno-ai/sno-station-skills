@@ -42,11 +42,16 @@ export function locallyWrittenSessions(store: string): Set<string> {
     .map(line => String((JSON.parse(line) as { trace_key: unknown }).trace_key)));
 }
 
-// Only sessions with an external verdict can teach a lesson; among them, the most failed calls and typed owner lines go first.
+// Lessons cannot cite a git commit or push, so exclude those verdicts before choosing sessions; among the
+// sessions left, the most failed calls and typed owner lines go first.
 function pick(eligible: readonly Trace[], harness: Trace['agent_id'], done: ReadonlySet<string>):
   { trace: Trace; events: Set<number>; calls: CallRecord[]; verdicts: Verdict[] }[] {
   return eligible.filter(trace => trace.agent_id === harness && !done.has(traceKey(trace)))
-    .map(trace => { const calls = readCalls(trace); return { trace, events: eventLines(trace), calls, verdicts: externalVerdicts(calls) }; })
+    .map(trace => {
+      const calls = readCalls(trace);
+      const verdicts = externalVerdicts(calls).filter(verdict => verdict.kind !== 'landed');
+      return { trace, events: eventLines(trace), calls, verdicts };
+    })
     .filter(item => item.events.size > 0 && item.verdicts.length > 0)
     .sort((a, b) => b.events.size - a.events.size)
     .slice(0, limits.localSessionsPerHalf);
