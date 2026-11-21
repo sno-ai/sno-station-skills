@@ -16,7 +16,6 @@ import {
   tmp, fixtureConfig, fixtureCheckout, makeStore, writeStationSettings,
   writeCodexSession, codexMeta, codexUser, codexAssistant, codexFailedTest,
 } from './test-helpers.ts';
-import type { ClaudeRecord } from './test-helpers.ts';
 import type { Config } from './config.ts';
 
 const MT = new Date('2026-09-07T00:00:00Z').getTime();
@@ -147,6 +146,31 @@ test('experience graph: local-first outcomes survive drafting and approval', t =
   assert.equal(readLessons(store).find(row => row.lesson_id === fresh.lesson_id)?.status, 'rejected');
 });
 
+test('the local writer skips commit-only sessions and omits commits from the verdict list', t => {
+  localFirst(t);
+  const config = fixtureConfig();
+  const store = makeStore(config);
+  const commit = { type: 'event_msg', payload: { type: 'item_completed', turn_id: 'turn-1',
+    item: { type: 'CommandExecution', id: 'exec-commit', parsed_cmd: [{ type: 'unknown', cmd: 'git commit -m report' }],
+      status: 'completed', exit_code: 0, aggregated_output: '[main abc123] report\n 1 file changed' } } };
+  writeCodexSession(config.codex_root, 'test-and-commit', [
+    codexMeta('test-and-commit', '/n'), codexUser('write the weekly report'),
+    codexAssistant('Report written, done.'), codexFailedTest(), commit, codexUser(`No, ${CORRECTION}`),
+  ], MT);
+  writeCodexSession(config.codex_root, 'commit-only', [
+    codexMeta('commit-only', '/n'), codexUser('write the weekly report'),
+    codexAssistant('Report written, done.'), commit, codexUser(`No, ${CORRECTION}`),
+  ], MT);
+
+  const writer = new WriterCli(prompt => /^\d+ test failed /m.test(prompt) ? lessonFor(prompt) : { lesson: null });
+  const result = run(store, NIGHT, 'u', writer);
+  assert.equal(result.code, 0, result.lines.join('\n'));
+  assert.deepEqual(writer.asked.map(({ cli, input }) => [
+    cli, input.split('\nExternal verdicts (line kind result command):\n')[1]?.split(/^\d+: /m)[0].trimEnd(),
+  ]), [['codex', '5 test failed cd /n && python3 -m pytest -q tests/report']]);
+  assert.equal(readLessons(store).length, 1);
+});
+
 test('experience graph: local-first keeps only fact identifiers supplied in evidence', t => {
   localFirst(t);
   const config = fixtureConfig({ claude_root: tmp('c'), codex_root: tmp('x') });
@@ -221,44 +245,6 @@ test('an answer whose quote is not in the session is refused and writes nothing,
   assert.match(readFileSync(join(store, 'staging', '20260908-0000', 'run.log'), 'utf8').concat(result.lines.join('\n')), /local writer answer refused/);
   const report = readFileSync(join(store, 'staging', '20260908-0000', 'REPORT.md'), 'utf8');
   assert.match(report, /New lessons: 0/);
-});
-
-// A commit is a `landed` verdict, which `verdictRef` refuses for either polarity: the writer is never offered one.
-function codexCommit(): ClaudeRecord {
-  return { type: 'event_msg', payload: { type: 'item_completed', turn_id: 'turn-1', started_at_ms: 1788984002000, completed_at_ms: 1788984003000,
-    item: { type: 'CommandExecution', id: 'exec-2', command: ['/usr/bin/zsh', '-lc', "cd /n && git commit -m 'report read-back'"], parsed_cmd: [{ type: 'unknown', cmd: "cd /n && git commit -m 'report read-back'" }],
-      status: 'completed', exit_code: 0, aggregated_output: '[main abc1234] report read-back\n 1 file changed, 2 insertions(+)\n' } } };
-}
-
-test('the local writer is offered only verdicts a lesson can cite, and a session whose only verdict is a commit is not asked', t => {
-  localFirst(t);
-  const config = fixtureConfig({ claude_root: tmp('c'), codex_root: tmp('x') });
-  const store = makeStore(config);
-  writeCodexSession(config.codex_root, 'cx', [
-    codexMeta('cx', '/n'),
-    codexUser('write the weekly report'),
-    codexAssistant('Report written, done.'),
-    codexFailedTest(),
-    codexCommit(),
-    codexUser(`No, ${CORRECTION}`),
-    codexAssistant('You are right, I checked it now.'),
-  ], MT);
-  writeCodexSession(config.codex_root, 'cy', [
-    codexMeta('cy', '/n'),
-    codexUser('write the weekly report'),
-    codexAssistant('Report written, done.'),
-    codexCommit(),
-    codexUser(`No, ${CORRECTION}`),
-    codexAssistant('You are right, I checked it now.'),
-  ], MT);
-  const writer = new WriterCli();
-  const result = run(store, NIGHT, 'u', writer);
-  assert.equal(result.code, 0, result.lines.join('\n'));
-  assert.equal(writer.asked.length, 1, 'only the session with a citable verdict is asked');
-  const listed = writer.asked[0].input.split('External verdicts (line kind result command):\n')[1].split('\n')[0];
-  assert.match(listed, /^\d+ test failed /);
-  assert.doesNotMatch(writer.asked[0].input, /^\d+ landed /m);
-  assert.equal(readLessons(store).length, 1);
 });
 
 test('a session the model finds nothing in writes nothing, and a CLI that cannot run fails the night and is asked again next night', t => {
