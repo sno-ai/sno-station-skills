@@ -61,9 +61,9 @@ usage: log-watch.sh --log <path> [--ring <addr>] [--from <addr>] [--journey <id>
                        where a background exit wakes nobody. Repeatable.
   --from <addr>        sender address for the ring (default: the first --ring address)
   --journey <id>       journey id in diagnostics (default: unknown)
-  --startup-deadline N seconds to wait for the log to show life before declaring the spawn
-                       dead (default 600 — the launch window; 0 disables). Only the
-                       markers above count as life.
+  --startup-deadline N seconds to wait for the log's first output before declaring the
+                       spawn dead (default 600 — the launch window; 0 disables). Only a
+                       log that stays silent for the whole window is NEVER-STARTED.
   --since-bytes <n>    start at byte n of the log, for a resume appending to the log its
                        previous attempt wrote (default: the whole log, which is this run)
   --print              print a plain read-only stream command instead; it does NOT ring
@@ -190,9 +190,9 @@ fi
 while IFS= read -r line; do
   if [[ "$line" == $'\004STARTUP-DEADLINE' ]]; then
     (( started )) && continue
-    printf 'NEVER-STARTED | no recognized marker in %ss — the spawn may be dead, or an interactive session that does not print these markers: read the window (tmux capture-pane -pt <callsign>) before killing or resuming\n' "$deadline"
+    printf 'NEVER-STARTED | no output at all in %ss — the spawn may be dead, or the log path is stale: read the window (tmux capture-pane -pt <callsign>) before killing or resuming\n' "$deadline"
     ring "log-watch NEVER-STARTED: $log" \
-         "No recognized runner marker within ${deadline}s of arming. The spawn may not have started, or it is an interactive session that does not print these markers. Read the window before killing or resuming."
+         "No output at all within ${deadline}s of arming. The spawn may not have started, or it writes to another path. Read the window before killing or resuming."
     finish 3
   fi
   started=1   # any output at all means the process is alive; only total silence is NEVER-STARTED
