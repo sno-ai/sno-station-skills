@@ -41,6 +41,23 @@ test('commandId finds the verdict command behind the wrappers real sessions put 
   assert.equal(commandId('sudo -E make'), 'make');
 });
 
+test('pnpm workspace commands: the --filter selector is dropped and check scripts are verdicts', () => {
+  // The forms a pnpm monorepo's AGENTS.md has agents run (sno-ai/sno-station#269).
+  assert.equal(commandId('pnpm -F @proj-airi/api-server exec vitest run src/routes/characters/route.test.ts'), 'vitest');
+  assert.equal(commandId('pnpm --filter @proj-airi/api-server exec vitest run'), 'vitest');
+  assert.equal(commandId('pnpm --filter=@proj-airi/api-server exec vitest run'), 'vitest');
+  assert.equal(commandId('pnpm -F @proj-airi/api-server test'), 'pnpm test');
+  assert.equal(commandId('pnpm -F @proj-airi/api-server typecheck'), 'pnpm typecheck');
+  assert.equal(commandId('pnpm typecheck'), 'pnpm typecheck');
+  assert.equal(commandId('pnpm run lint'), 'pnpm run lint');
+  assert.equal(commandId('npm run typecheck'), 'npm run typecheck');
+  assert.equal(commandId('pnpm test:unit'), 'pnpm test:unit');
+  assert.equal(commandId('pnpm -F web run test:e2e'), 'pnpm run test:e2e');
+  assert.equal(commandId('pnpm -F web dev'), null);
+  assert.deepEqual(brief([call(30, 'pnpm -F @proj-airi/api-server typecheck', true, 'src/a.ts(3,1): error TS2322')]), [[30, 'typecheck_lint', false]]);
+  assert.deepEqual(brief([call(31, 'pnpm -F @proj-airi/api-server exec vitest run a', false, '      Tests  4 passed (4)')]), [[31, 'test', true]]);
+});
+
 test('the four real excerpts yield two, two, zero and zero verdicts', () => {
   const vitest = readCalls(fixtures.claude_vitest);
   assert.ok(vitest.length > 0, 'the instrument sees the Claude Code calls');
