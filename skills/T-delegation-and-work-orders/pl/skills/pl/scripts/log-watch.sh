@@ -45,7 +45,7 @@
 # filter tuned for failure stays quiet through a flawless run in the wrong directory. That
 # needs an unfiltered read of the log (pl-watch).
 #
-# exit 0 = you stopped it · 2 = the run ended · 3 = no marker seen before the startup
+# exit 0 = you stopped it · 2 = the run ended · 3 = no output before the startup
 #      deadline · 4 = the watch died · 5 = outcome reached but a ring failed · 64 = bad usage · 69 = missing dependency
 set -Eeuo pipefail
 
@@ -61,9 +61,9 @@ usage: log-watch.sh --log <path> [--ring <addr>] [--from <addr>] [--journey <id>
                        where a background exit wakes nobody. Repeatable.
   --from <addr>        sender address for the ring (default: the first --ring address)
   --journey <id>       journey id in diagnostics (default: unknown)
-  --startup-deadline N seconds to wait for the log's first output before declaring the
-                       spawn dead (default 600 — the launch window; 0 disables). Only a
-                       log that stays silent for the whole window is NEVER-STARTED.
+  --startup-deadline N seconds to wait for the log's first output (any line).
+                       Only a log that stays silent for the whole deadline is declared
+                       NEVER-STARTED (default 600, 0 disables).
   --since-bytes <n>    start at byte n of the log, for a resume appending to the log its
                        previous attempt wrote (default: the whole log, which is this run)
   --print              print a plain read-only stream command instead; it does NOT ring
@@ -179,8 +179,7 @@ finish() { (( ring_failed )) && exit 5; exit "$1"; }
 tail "${start[@]}" -F -- "$log" > "$fifo" 2>/dev/null &
 tail_pid=$!
 
-# The deadline is a separate process that injects a sentinel line, so a log that never shows
-# a marker cannot hold the watch open forever. The first matching line disarms it.
+# The timer writes a deadline line, which the loop ignores after any log output.
 started=0
 if (( deadline > 0 )); then
   ( sleep "$deadline"; printf '\004STARTUP-DEADLINE\n' > "$fifo" 2>/dev/null ) &
@@ -190,9 +189,9 @@ fi
 while IFS= read -r line; do
   if [[ "$line" == $'\004STARTUP-DEADLINE' ]]; then
     (( started )) && continue
-    printf 'NEVER-STARTED | no output at all in %ss — the spawn may be dead, or the log path is stale: read the window (tmux capture-pane -pt <callsign>) before killing or resuming\n' "$deadline"
+    printf 'NEVER-STARTED | no output within %ss. The spawn may not have started, or the log may never have appeared at this path. Read the window (tmux capture-pane -pt <callsign>) before killing or resuming.\n' "$deadline"
     ring "log-watch NEVER-STARTED: $log" \
-         "No output at all within ${deadline}s of arming. The spawn may not have started, or it writes to another path. Read the window before killing or resuming."
+         "No output within ${deadline}s. The spawn may not have started, or the log may never have appeared at this path. Read the window (tmux capture-pane -pt <callsign>) before killing or resuming."
     finish 3
   fi
   started=1   # any output at all means the process is alive; only total silence is NEVER-STARTED
