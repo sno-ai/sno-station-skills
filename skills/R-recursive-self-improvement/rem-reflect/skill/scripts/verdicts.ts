@@ -13,8 +13,6 @@ const KINDS: Record<string, VerdictKind> = {
   'cargo test': 'test', 'go test': 'test', bats: 'test', prove: 'test',
   tsc: 'typecheck_lint', ruff: 'typecheck_lint', eslint: 'typecheck_lint', mypy: 'typecheck_lint',
   shellcheck: 'typecheck_lint', biome: 'typecheck_lint',
-  'pnpm typecheck': 'typecheck_lint', 'pnpm lint': 'typecheck_lint', 'pnpm run typecheck': 'typecheck_lint', 'pnpm run lint': 'typecheck_lint',
-  'npm run typecheck': 'typecheck_lint', 'npm run lint': 'typecheck_lint', 'bun run typecheck': 'typecheck_lint', 'bun run lint': 'typecheck_lint',
   'npm run build': 'build', 'bun build': 'build', 'cargo build': 'build', make: 'build',
   'git commit': 'landed', 'git push': 'landed',
 };
@@ -22,8 +20,6 @@ const KINDS: Record<string, VerdictKind> = {
 // (`cargo run test` starts a program with an argument).
 const MULTI = new Set(['bun', 'npm', 'pnpm', 'cargo', 'go', 'git']);
 const RUN_SCRIPT = new Set(['bun', 'npm', 'pnpm']);
-// A package script named `test:<suffix>` (`pnpm test:unit`, `npm run test:e2e`) runs tests.
-const TEST_SCRIPT = /^(?:pnpm|(?:pnpm|npm|bun) run) test:\S/;
 // Wrappers in front of the real command: dropped with their argument count.
 const DROP_ONE = new Set(['env', 'nice', 'sudo', 'npx', 'bunx']);
 const DROP_TWO = new Set(['cd', 'timeout', '-u', 'uv run', 'pnpm exec', 'npm exec', 'python3 -m', 'python -m']);
@@ -59,12 +55,14 @@ function unwrapped(words: string[]): string[] {
   for (;;) {
     const [first, second] = words;
     if (first === undefined) return words;
+    const separateSelector = second === '-F' || second === '--filter';
+    if (first === 'pnpm' && (separateSelector || second?.startsWith('--filter='))) {
+      words = [first, ...words.slice(separateSelector ? 3 : 2)];
+      continue;
+    }
     if (DROP_TWO.has(first) || DROP_TWO.has(`${first} ${second}`)) { words = words.slice(2); continue; }
     // A wrapper's own option (`npx --yes`, `sudo -E`) comes before the command word and is dropped with the wrapper.
     if (DROP_ONE.has(first) || first.startsWith('-') || /^[A-Za-z_]\w*=/.test(first)) { words = words.slice(1); continue; }
-    // pnpm's workspace selector (`pnpm -F <pkg> exec vitest`, `pnpm --filter=<pkg> typecheck`) picks a package, not the command.
-    if (first === 'pnpm' && (second === '-F' || second === '--filter')) { words = [first, ...words.slice(3)]; continue; }
-    if (first === 'pnpm' && second?.startsWith('--filter=')) { words = [first, ...words.slice(2)]; continue; }
     // A secrets or environment runner (`<tool> run [options] -- command`) wraps the real command; a command's own `run` does not.
     const name = first.slice(first.lastIndexOf('/') + 1);
     if (second === 'run' && verdictKind(name) === null && !MULTI.has(name)) {
@@ -90,7 +88,12 @@ export function commandWord(segment: string): string | null {
 
 export function verdictKind(id: string | null): VerdictKind | null {
   if (!id) return null;
-  return KINDS[id] ?? (id.endsWith('.t') || TEST_SCRIPT.test(id) ? 'test' : null);
+  const known = KINDS[id];
+  if (known) return known;
+  const script = /^(?:npm run |(?:bun|pnpm) (?:run )?)(\S+)$/.exec(id)?.[1];
+  if (script === 'typecheck' || script === 'lint') return 'typecheck_lint';
+  if (script && /^test:.+/.test(script)) return 'test';
+  return id.endsWith('.t') ? 'test' : null;
 }
 
 // The verdict identity of a whole command: its verdict-carrying segments must all be one family (they
