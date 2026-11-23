@@ -41,6 +41,35 @@ test('commandId finds the verdict command behind the wrappers real sessions put 
   assert.equal(commandId('sudo -E make'), 'make');
 });
 
+test('workspace selectors and package scripts produce external verdicts', () => {
+  assert.deepEqual(brief([
+    call(10, 'pnpm -F @acme/api exec vitest run x.test.ts', false, 'Tests  3 passed (3)'),
+    call(11, 'pnpm -F web typecheck', true, 'error TS2322'),
+    call(12, 'pnpm typecheck', false),
+    call(13, 'pnpm lint', false),
+    call(14, 'pnpm run lint', false),
+    call(15, 'npm run typecheck', false),
+    call(16, 'bun run lint', false),
+    call(17, 'pnpm --filter=@acme/api run lint', false),
+    call(18, 'pnpm test:unit', false, '4 passed'),
+    call(19, 'npm run test:e2e', false, '1 failed'),
+    call(20, 'pnpm -F web run test:e2e', false, '2 passed'),
+    call(21, 'pnpm test:unit', false, 'No tests found'),
+    call(22, 'pnpm test:unit', true, 'Failed to load test configuration'),
+    call(23, 'pnpm -F web dev', true),
+  ]), [
+    [10, 'test', true], [11, 'typecheck_lint', false], [12, 'typecheck_lint', true],
+    [13, 'typecheck_lint', true], [14, 'typecheck_lint', true], [15, 'typecheck_lint', true],
+    [16, 'typecheck_lint', true], [17, 'typecheck_lint', true], [18, 'test', true],
+    [19, 'test', false], [20, 'test', true], [22, 'test', false],
+  ]);
+  assert.equal(commandId('pnpm --filter @acme/api exec vitest run'), 'vitest');
+  assert.equal(commandId('pnpm --filter=@acme/api exec vitest run'), 'vitest');
+  assert.equal(commandId('pnpm -F web test'), 'pnpm test');
+  assert.equal(commandId('pnpm test'), 'pnpm test');
+  assert.equal(commandId('pnpm exec vitest run'), 'vitest');
+});
+
 test('the four real excerpts yield two, two, zero and zero verdicts', () => {
   const vitest = readCalls(fixtures.claude_vitest);
   assert.ok(vitest.length > 0, 'the instrument sees the Claude Code calls');

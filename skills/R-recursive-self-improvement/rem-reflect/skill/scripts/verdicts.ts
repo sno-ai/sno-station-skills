@@ -55,6 +55,11 @@ function unwrapped(words: string[]): string[] {
   for (;;) {
     const [first, second] = words;
     if (first === undefined) return words;
+    const separateSelector = second === '-F' || second === '--filter';
+    if (first === 'pnpm' && (separateSelector || second?.startsWith('--filter='))) {
+      words = [first, ...words.slice(separateSelector ? 3 : 2)];
+      continue;
+    }
     if (DROP_TWO.has(first) || DROP_TWO.has(`${first} ${second}`)) { words = words.slice(2); continue; }
     // A wrapper's own option (`npx --yes`, `sudo -E`) comes before the command word and is dropped with the wrapper.
     if (DROP_ONE.has(first) || first.startsWith('-') || /^[A-Za-z_]\w*=/.test(first)) { words = words.slice(1); continue; }
@@ -83,7 +88,12 @@ export function commandWord(segment: string): string | null {
 
 export function verdictKind(id: string | null): VerdictKind | null {
   if (!id) return null;
-  return KINDS[id] ?? (id.endsWith('.t') ? 'test' : null);
+  const known = KINDS[id];
+  if (known) return known;
+  const script = /^(?:npm run |(?:bun|pnpm) (?:run )?)(\S+)$/.exec(id)?.[1];
+  if (script === 'typecheck' || script === 'lint') return 'typecheck_lint';
+  if (script && /^test:.+/.test(script)) return 'test';
+  return id.endsWith('.t') ? 'test' : null;
 }
 
 // The verdict identity of a whole command: its verdict-carrying segments must all be one family (they
