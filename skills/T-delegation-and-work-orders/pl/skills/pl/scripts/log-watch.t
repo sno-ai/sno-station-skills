@@ -109,6 +109,9 @@ rc=0; timeout 20 bash "$WATCH" --log "$root/never.log" --startup-deadline 2 \
 check "declares NEVER-STARTED instead of waiting forever" test "$rc" -eq 3
 check "rings on never-started, and says what to do" \
   bash -c 'grep -q "REACH-RING" "$1" && grep -q "NEVER-STARTED" "$2"' _ "$sent" "$root/never.out"
+check "NEVER-STARTED reports no output" grep -q '^NEVER-STARTED | no output' "$root/never.out"
+check "NEVER-STARTED makes no mention of markers" \
+  bash -c '! grep -qF "marker" "$1"' _ "$root/never.out"
 
 # 11b. an interactive session prints terminal text with none of the runner markers; any output
 # means it started, so a 2 s deadline must not declare NEVER-STARTED while it is still running
