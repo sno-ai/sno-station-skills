@@ -27,8 +27,12 @@ from a development branch name.
 
 For a received `[CALL]` requesting a mail answer, read its original local file and use
 `sno reach reply --as YOUR_ADDRESS --card ORIGINAL_FILE` with the answer on stdin,
-without `--state`. For a task email, finish the `accepted` reply before doing the work
-and sending `completed` or `failed`. A replied call needs no further dismissal.
+without `--state`. For a card that asks you to do work, finish the `accepted` reply before
+doing the work and sending `completed` or `failed`. A replied call needs no further dismissal.
+
+To give another agent work to do, send a decision card: `X-Type: decision` with a Subject
+that starts with `[DECISION]`. There is no `task` card type; `sno reach lint` refuses
+`X-Type: task`.
 
 Use `sno reach` for the communication the task authorizes. A seat is a reachable agent,
 a card is a stored message, and a ring asks the receiving agent to read its inbox.
