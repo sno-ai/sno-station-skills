@@ -702,7 +702,7 @@ whether to install the skill:
 ```yaml
 requires:
   programs:
-  - {name: reach, min_version: "2.0"}                          # Sno Station programs the skill calls
+    - {name: reach, min_version: "2.0"}                          # Sno Station programs the skill calls
   harness:
     - {slot: 4.shell, need: required}        # what the agent itself must be able to do
 ```
