@@ -2,7 +2,7 @@
 
 Write one Markdown report with exactly one `PRD Handoff` section and exactly one JSON block.
 Use the sections below in this order. Every section needs substantive content. The report must
-contain no `?` character; put surviving choices under
+contain no `?` outside HTTP or HTTPS URLs; put surviving choices under
 `Owner Decisions` as declarative open decisions, then ask them one at a time in chat.
 
 ````markdown
@@ -89,7 +89,8 @@ they add evidence rather than a second interpretation.
 }
 ```
 
-`rejected_alternatives`, `open_owner_decisions`, the three calibration arrays, and
-`selected_direction.split_outcomes` may be empty. `split_outcomes` must contain at least two
-items for `SPLIT` and must be empty otherwise. All other arrays must be non-empty. A report with
+`constraints`, `rejected_alternatives`, and `open_owner_decisions` may be empty. Each calibration
+array may be empty, but at least one must contain a claim. `selected_direction.split_outcomes` must
+contain at least two items for `SPLIT` and must be empty otherwise. All other arrays must be
+non-empty. A report with
 no research or no challenged premise is invalid.
