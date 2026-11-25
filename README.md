@@ -599,7 +599,7 @@ has to happen at a time you will not be there for.
 - **A family of five more skills:** `pl-dispatch` opens and schedules the work, `pl-watch`
   supervises agents in flight, `pl-audit` checks acceptance before anything closes, `pl-env`
   fixes the environment the work runs in, and `pl-analyze` writes the root-cause analysis when
-  something goes wrong.
+  something goes wrong. 
 
 *Use it when:* one project needs several agents working under one lead. You start it by name.
 
