@@ -709,7 +709,7 @@ requires:
 
 - **programs** are Sno Station programs installed next to the skills and run as `sno <name>`:
   `reach`, `heartbeat`, `subscription-quota-check`, `report-time`.
-  - **min_version** is the minimum version of the named Sno Station program required by the skill.
+- **min_version** is the minimum version of the named Sno Station program required by the skill.
 - **slots** name an agent ability: `4.shell` (run shell commands), `4.file-read-write` (read and
   write files), `4.background-processes` (run a command in the background),
   `2.pre-turn-context-injection` (add text to the agent's context before each turn) and
