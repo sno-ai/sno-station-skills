@@ -683,13 +683,15 @@ LICENSE                         Apache-2.0
 
 ```yaml
 requires:
-  programs: [reach]                          # Sno Station programs the skill calls
+  programs:
+    - {name: reach, min_version: "2.0"}                          # Sno Station programs the skill calls
   harness:
     - {slot: 4.shell, need: required}        # what the agent itself must be able to do
 ```
 
 - **programs**는 스킬 옆에 설치되어 `sno <name>`으로 실행되는 Sno Station 프로그램입니다.
   `reach`, `heartbeat`, `subscription-quota-check`, `report-time`.
+- **min_version**은 스킬이 요구하는, 지정한 Sno Station 프로그램의 최소 버전입니다.
 - **slots**는 에이전트의 능력 이름입니다. `4.shell`(셸 명령 실행), `4.file-read-write`(파일 읽기와
   쓰기), `4.background-processes`(명령을 백그라운드에서 실행), `2.pre-turn-context-injection`(매 턴
   전에 에이전트 컨텍스트에 텍스트 추가), `3.reader-to-agent-delivery`(백그라운드 리더의 출력이

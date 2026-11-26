@@ -629,13 +629,15 @@ LICENSE                         Apache-2.0
 
 ```yaml
 requires:
-  programs: [reach]                          # Sno Station programs the skill calls
+  programs:
+    - {name: reach, min_version: "2.0"}                          # Sno Station programs the skill calls
   harness:
     - {slot: 4.shell, need: required}        # what the agent itself must be able to do
 ```
 
 - **programs** 是和技能裝在一起、以 `sno <name>` 執行的 Sno Station 程式：
   `reach`、`heartbeat`、`subscription-quota-check`、`report-time`。
+- **min_version** 是該技能所要求的、所指名 Sno Station 程式的最低版本。
 - **slots** 代表 agent 的某項能力：`4.shell`（執行 shell 指令）、`4.file-read-write`（讀寫
   檔案）、`4.background-processes`（在背景執行指令）、
   `2.pre-turn-context-injection`（每一輪開始前把文字加進 agent 的脈絡）以及

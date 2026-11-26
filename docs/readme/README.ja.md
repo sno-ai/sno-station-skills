@@ -692,13 +692,15 @@ LICENSE                         Apache-2.0
 
 ```yaml
 requires:
-  programs: [reach]                          # Sno Station programs the skill calls
+  programs:
+    - {name: reach, min_version: "2.0"}                          # Sno Station programs the skill calls
   harness:
     - {slot: 4.shell, need: required}        # what the agent itself must be able to do
 ```
 
 - **programs** は、スキルと並んでインストールされ `sno <name>` として実行される Sno Station のプログラムです。
   `reach`、`heartbeat`、`subscription-quota-check`、`report-time`。
+- **min_version** は、スキルが要求する、指定した Sno Station プログラムの最低バージョンです。
 - **slots** はエージェントの能力を表します。`4.shell`（シェルコマンドを実行する）、`4.file-read-write`
   （ファイルを読み書きする）、`4.background-processes`（コマンドをバックグラウンドで実行する）、
   `2.pre-turn-context-injection`（各ターンの前にエージェントのコンテキストへテキストを追加する）、
