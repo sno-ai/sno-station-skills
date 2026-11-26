@@ -24,12 +24,14 @@ FINDINGS_FILE="${FINDINGS_FILE:-$HOME/.local/state/codex-reviews/findings.jsonl}
 mkdir -p "$(dirname "$FINDINGS_FILE")" 2>/dev/null || true
 touch "$FINDINGS_FILE" 2>/dev/null || true
 
-[ $# -ge 1 ] || { sed -n '2,20p' "$0"; exit 2; }
+usage() { sed -n '2,/^set -Eeuo pipefail$/p' "$0" | sed '$d;s/^# \{0,1\}//'; }
+
+[ $# -ge 1 ] || { usage; exit 2; }
 cmd="$1"; shift
 
 case "$cmd" in
     record|list|set|prior) ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    -h|--help) usage; exit 0 ;;
     *) echo "review-findings: unknown command '$cmd'" >&2; exit 2 ;;
 esac
 
