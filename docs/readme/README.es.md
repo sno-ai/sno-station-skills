@@ -724,13 +724,15 @@ agente, si instala la skill:
 
 ```yaml
 requires:
-  programs: [reach]                          # Sno Station programs the skill calls
+  programs:
+    - {name: reach, min_version: "2.0"}                          # Sno Station programs the skill calls
   harness:
     - {slot: 4.shell, need: required}        # what the agent itself must be able to do
 ```
 
 - **programs** son programas de Sno Station que se instalan junto a las skills y se ejecutan como
   `sno <name>`: `reach`, `heartbeat`, `subscription-quota-check`, `report-time`.
+- **min_version** es la versión mínima del programa de Sno Station indicado que exige la skill.
 - **slots** nombran una capacidad del agente: `4.shell` (ejecutar comandos de shell),
   `4.file-read-write` (leer y escribir archivos), `4.background-processes` (ejecutar un comando en
   segundo plano), `2.pre-turn-context-injection` (añadir texto al contexto del agente antes de cada
