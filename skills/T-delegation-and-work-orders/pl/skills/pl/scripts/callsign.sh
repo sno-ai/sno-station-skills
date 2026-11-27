@@ -344,12 +344,17 @@ cmd_banner() {
   printf '══════════════════════════════════════════════════════════\n'
 }
 
+print_help() {
+  sed -n '2,/^set -euo pipefail$/p' -- "$0" | sed '$d;s/^# \{0,1\}//'
+}
+
 case "${1:-}" in
+  -h|--help) print_help; exit 0 ;;
   claim)    shift; cmd_claim "$@" ;;
   release)  shift; cmd_release "$@" ;;
   transfer) shift; cmd_transfer "$@" ;;
   list)     shift; cmd_list "$@" ;;
   title)    shift; cmd_title "$@" ;;
   banner)   shift; cmd_banner "$@" ;;
-  *) sed -n '2,20p' "$0"; exit 2 ;;
+  *) print_help; exit 2 ;;
 esac
