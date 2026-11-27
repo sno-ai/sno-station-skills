@@ -492,7 +492,6 @@ case_help() {
     local script="$1" synopsis="$2" flag out failed=0 err="$ROOT/help.err"
     for flag in -h --help; do
         if ! out="$(STATS_FILE="$ROOT/help-ledger.jsonl" CODEX_SESSIONS_DIR="$ROOT/help-sessions" \
-            FINDINGS_FILE="$ROOT/help-findings.jsonl" \
             bash "$HERE/../$script" "$flag" 2>"$err")" || [[ -s "$err" ]] ||
             grep -Eq '^#|set -Eeuo pipefail' <<<"$out" || ! grep -Fxq -- "  $synopsis" <<<"$out"; then
             printf '%s %s: expected exit 0, empty stderr, and clean help on stdout\n' "$script" "$flag" >&2
