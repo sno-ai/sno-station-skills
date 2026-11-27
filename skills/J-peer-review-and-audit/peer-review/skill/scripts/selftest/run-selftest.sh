@@ -504,6 +504,8 @@ check "review-receipt.sh prints clean help with -h and --help" case_help \
     review-receipt.sh 'review-receipt.sh [--since <YYYY-MM-DD|today|all>] [--journey <id>] [--check]'
 check "review-backfill.sh prints clean help with -h and --help" case_help \
     review-backfill.sh 'review-backfill.sh [--since <YYYY-MM-DD>] [--dry-run]'
+check "review-findings.sh prints clean help with -h and --help" case_help \
+    review-findings.sh 'review-findings.sh record <report.md> [--run <id>] [--scope <id>] [--kind <k>]'
 
 # ---- 13. the report is kept somewhere durable, and the ledger points at it --
 # A finding written to /tmp can be lost.
