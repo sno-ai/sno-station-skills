@@ -24,19 +24,23 @@ target=''
 printed=0
 
 die() { printf 'cos-screen: %s\n' "$*" >&2; exit 2; }
-for tool in tmux jq sno; do
-    command -v "$tool" >/dev/null 2>&1 || die "$tool is required but not installed"
-done
+print_help() {
+    sed -n '2,/^set -Eeuo pipefail$/p' -- "$0" | sed '$d;s/^# //;s/^#$//'
+}
 
 while (($#)); do
     case "$1" in
         --lines) [[ "${2:-}" =~ ^[0-9]+$ ]] || die "--lines needs a number"; lines="$2"; shift 2 ;;
-        -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
+        -h|--help) print_help; exit 0 ;;
         -*) die "unknown flag: $1" ;;
         *) [[ -z "$target" ]] || die "one target only"; target="$1"; shift ;;
     esac
 done
 [[ -n "$target" ]] || die "usage: cos-screen.sh <seat-address | repo> [--lines N]"
+
+for tool in tmux jq sno; do
+    command -v "$tool" >/dev/null 2>&1 || die "$tool is required but not installed"
+done
 
 # capture-pane and Orca pad the frame with blank rows; keep the last N non-blank rows.
 last_lines() {
